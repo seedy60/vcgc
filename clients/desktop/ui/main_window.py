@@ -167,6 +167,7 @@ class MainWindow(wx.Frame):
 
         # Bind close event (Alt+F4, window close button)
         self.Bind(wx.EVT_CLOSE, self.on_close)
+        self.Bind(wx.EVT_ACTIVATE_APP, self.on_app_activate)
 
         # Auto-connect to localhost
         self._auto_connect()
@@ -372,6 +373,27 @@ class MainWindow(wx.Frame):
             if result != wx.ID_YES:
                 return
         event.Skip()
+
+    def on_app_activate(self, event):
+        """Restore the account settings dialog when returning to the app."""
+        event.Skip()
+        if not event.GetActive():
+            return
+        dialog = getattr(self, "account_email_dialog", None)
+        if dialog is not None:
+            wx.CallAfter(self._restore_account_settings_dialog, dialog)
+
+    def _restore_account_settings_dialog(self, dialog):
+        """Raise an open account settings dialog after app activation."""
+        if getattr(self, "account_email_dialog", None) is not dialog:
+            return
+        try:
+            if dialog.IsShown():
+                dialog.Raise()
+                dialog.SetFocus()
+        except RuntimeError:
+            # The dialog may have been destroyed while activation was queued.
+            pass
 
     def on_focus_menu(self, event):
         """Handle Alt+M shortcut to focus menu list."""

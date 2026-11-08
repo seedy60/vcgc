@@ -385,6 +385,29 @@ def test_account_email_dialog_disables_controls_when_email_unavailable(wx_app):
         dlg.Destroy()
 
 
+def test_account_email_dialog_closes_and_notifies_owner_once(wx_app):
+    """Closing the dialog destroys it instead of leaving a modeless window open."""
+    closed = []
+    dlg = AccountEmailDialog(
+        None,
+        {
+            "username": "alice",
+            "email": "old@example.com",
+            "email_verified": True,
+            "available": False,
+        },
+        send_packet=lambda packet: True,
+        on_closed=lambda _dialog: closed.append(True),
+    )
+    dlg.Show()
+    wx_app.Yield()
+    dlg.Close()
+    wx_app.Yield()
+
+    assert closed == [True]
+    assert not dlg
+
+
 def test_account_email_dialog_allows_retry_after_delivery_failure(wx_app):
     """A failed delivery keeps the entered address and retry action available."""
     sent = []

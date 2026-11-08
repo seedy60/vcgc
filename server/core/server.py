@@ -5143,6 +5143,18 @@ def _configure_logging() -> None:
     root.addHandler(file_handler)
     root.addHandler(stderr_handler)
 
+    mail_logger = logging.getLogger("playpalace.mail")
+    mail_logger.setLevel(logging.INFO)
+    if not any(
+        getattr(handler, "_playpalace_mail_log", False)
+        for handler in mail_logger.handlers
+    ):
+        mail_handler = logging.FileHandler(str(log_dir / "mail.log"))
+        mail_handler.setLevel(logging.INFO)
+        mail_handler.setFormatter(fmt)
+        mail_handler._playpalace_mail_log = True
+        mail_logger.addHandler(mail_handler)
+
 
 def _install_exception_handlers(loop: asyncio.AbstractEventLoop) -> None:
     """Install top-level exception handlers for the event loop."""

@@ -15,7 +15,7 @@ import smtplib
 import ssl
 from dataclasses import dataclass
 from email.message import EmailMessage
-from email.utils import parseaddr
+from email.utils import formatdate, make_msgid, parseaddr
 from typing import Any
 
 LOG = logging.getLogger("playpalace.mail")
@@ -162,6 +162,12 @@ class EmailService:
             LOG.warning(
                 "SMTP is configured without TLS; use only for local development"
             )
+        LOG.info(
+            "SMTP configured for %s:%s with sender %s",
+            config.host,
+            config.port,
+            config.from_address,
+        )
         return cls(config)
 
     @property
@@ -173,11 +179,11 @@ class EmailService:
         self, recipient: str, username: str, code: str, expires_minutes: int
     ) -> None:
         """Send an account verification code."""
-        subject = f"Verify your {self.config.server_name} email"
+        subject = f"Your {self.config.server_name} verification code"
         body = (
             f"Hello {username},\n\n"
             f"Your {self.config.server_name} verification code is:\n\n"
-            f"    {code}\n\n"
+            f"{code}\n\n"
             f"This code expires in {expires_minutes} minutes. "
             "If you did not create this account, you can ignore this message.\n"
         )
@@ -187,11 +193,11 @@ class EmailService:
         self, recipient: str, username: str, code: str, expires_minutes: int
     ) -> None:
         """Send a password reset code."""
-        subject = f"Reset your {self.config.server_name} password"
+        subject = f"Your {self.config.server_name} password reset code"
         body = (
             f"Hello {username},\n\n"
             f"Your {self.config.server_name} password reset code is:\n\n"
-            f"    {code}\n\n"
+            f"{code}\n\n"
             f"This code expires in {expires_minutes} minutes. "
             "If you did not request a password reset, you can ignore this message. "
             "Your password will not change unless the code is used.\n"
@@ -202,12 +208,12 @@ class EmailService:
         self, recipient: str, username: str, code: str, expires_minutes: int
     ) -> None:
         """Send a code that confirms ownership of a new email address."""
-        subject = f"Confirm your new {self.config.server_name} email"
+        subject = f"Your {self.config.server_name} email confirmation code"
         body = (
             f"Hello {username},\n\n"
             f"Use this code to confirm the new email address for your "
             f"{self.config.server_name} account:\n\n"
-            f"    {code}\n\n"
+            f"{code}\n\n"
             f"This code expires in {expires_minutes} minutes. "
             "If you did not request this change, you can ignore this message. "
             "Your current email address will remain unchanged until the code "
@@ -230,34 +236,58 @@ class EmailService:
         message["From"] = self.config.from_address
         message["To"] = recipient
         message["Subject"] = subject
+        message["Date"] = formatdate(localtime=True)
+        _, sender_address = parseaddr(self.config.from_address)
+        message["Message-ID"] = make_msgid(
+            domain=sender_address.rpartition("@")[2] or None
+        )
         message.set_content(body)
 
-        context = ssl.create_default_context()
-        if self.config.security == "ssl":
-            with smtplib.SMTP_SSL(
-                self.config.host,
-                self.config.port,
-                timeout=self.config.timeout_seconds,
-                context=context,
-            ) as smtp:
-                smtp.ehlo()
-                self._authenticate(smtp)
-                smtp.send_message(message)
-            return
-
-        with smtplib.SMTP(
+        LOG.info(
+            "SMTP sending to %s via %s:%s (message-id %s)",
+            recipient,
             self.config.host,
             self.config.port,
-            timeout=self.config.timeout_seconds,
-        ) as smtp:
-            smtp.ehlo()
-            if self.config.security == "starttls":
-                smtp.starttls(context=context)
-                smtp.ehlo()
-            elif not self.config.allow_plaintext:
-                raise ValueError("Plaintext SMTP is not permitted")
-            self._authenticate(smtp)
-            smtp.send_message(message)
+            message["Message-ID"],
+        )
+        context = ssl.create_default_context()
+        try:
+            if self.config.security == "ssl":
+                with smtplib.SMTP_SSL(
+                    self.config.host,
+                    self.config.port,
+                    timeout=self.config.timeout_seconds,
+                    context=context,
+                ) as smtp:
+                    smtp.ehlo()
+                    self._authenticate(smtp)
+                    smtp.send_message(message)
+            else:
+                with smtplib.SMTP(
+                    self.config.host,
+                    self.config.port,
+                    timeout=self.config.timeout_seconds,
+                ) as smtp:
+                    smtp.ehlo()
+                    if self.config.security == "starttls":
+                        smtp.starttls(context=context)
+                        smtp.ehlo()
+                    elif not self.config.allow_plaintext:
+                        raise ValueError("Plaintext SMTP is not permitted")
+                    self._authenticate(smtp)
+                    smtp.send_message(message)
+        except Exception:
+            LOG.exception(
+                "SMTP delivery failed for %s (message-id %s)",
+                recipient,
+                message["Message-ID"],
+            )
+            raise
+        LOG.info(
+            "SMTP accepted message for %s (message-id %s)",
+            recipient,
+            message["Message-ID"],
+        )
 
     def _authenticate(self, smtp: smtplib.SMTP) -> None:
         """Authenticate when a username is configured."""

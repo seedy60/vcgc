@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import smtplib
 import ssl
 import time
@@ -385,13 +386,17 @@ async def test_registration_verification_and_password_reset(email_server):
     assert user is not None
     assert user.email == "alice@example.com"
     assert user.email_verified is False
+    assert user.approved is False
 
     code = email_server._email_service.verification[-1][2]
     await email_server._handle_verify_email(
         client, {"username": "alice", "code": code}
     )
     assert client.sent[-1]["type"] == "email_verified"
-    assert email_server._auth.get_user("alice").email_verified is True
+    assert client.sent[-1]["approved"] is False
+    verified_user = email_server._auth.get_user("alice")
+    assert verified_user.email_verified is True
+    assert verified_user.approved is False
 
     # Password login is now possible.
     assert email_server._auth.authenticate("alice", "old-password") == AuthResult.SUCCESS
@@ -479,7 +484,41 @@ def test_smtp_requires_tls_and_valid_from_address(tmp_path):
     assert config.security == "starttls"
 
 
-def test_smtp_starttls_uses_verified_context(monkeypatch):
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "method_name",
+    [
+        "send_verification_code",
+        "send_password_reset_code",
+        "send_email_change_code",
+    ],
+)
+async def test_code_email_does_not_indent_code(method_name):
+    """Codes are plain lines, without leading whitespace or phishing-like subjects."""
+    service = EmailService(
+        SMTPConfig(
+            host="smtp.example.com",
+            port=587,
+            from_address="no-reply@example.com",
+        )
+    )
+    captured = {}
+
+    async def fake_send(recipient, subject, body):
+        captured.update(recipient=recipient, subject=subject, body=body)
+
+    service._send = fake_send
+
+    await getattr(service, method_name)(
+        "alice@example.com", "alice", "123456", 15
+    )
+
+    assert captured["subject"].startswith("Your PlayPalace")
+    assert "\n123456\n\n" in captured["body"]
+    assert "    123456" not in captured["body"]
+
+
+def test_smtp_starttls_uses_verified_context(monkeypatch, caplog):
     """STARTTLS is negotiated with a default, certificate-validating context."""
     calls = {}
 
@@ -517,10 +556,15 @@ def test_smtp_starttls_uses_verified_context(monkeypatch):
             password="secret",
         )
     )
-    service._send_sync("alice@example.com", "Subject", "Body")
+    with caplog.at_level(logging.INFO, logger="playpalace.mail"):
+        service._send_sync("alice@example.com", "Subject", "Body")
 
+    assert "SMTP accepted message for alice@example.com" in caplog.text
     assert calls["port"] == 587
     assert isinstance(calls["context"], ssl.SSLContext)
     assert calls["context"].verify_mode == ssl.CERT_REQUIRED
     assert calls["login"] == ("user", "secret")
     assert calls["message"]["To"] == "alice@example.com"
+    assert calls["message"]["Date"]
+    assert calls["message"]["Message-ID"].endswith("@example.com>")
+    assert "Auto-Submitted" not in calls["message"]

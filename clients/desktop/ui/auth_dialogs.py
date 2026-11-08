@@ -154,10 +154,14 @@ class AccountEmailDialog(wx.Dialog):
             event.Skip()
 
     def on_close(self, event) -> None:
-        """Notify the owner before the dialog is destroyed."""
-        if self.on_closed:
-            self.on_closed(self)
-        event.Skip()
+        """Notify the owner and destroy the dialog."""
+        on_closed = self.on_closed
+        self.on_closed = None
+        try:
+            if on_closed:
+                on_closed(self)
+        finally:
+            self.Destroy()
 
     def on_send_code(self, event) -> None:
         """Request a confirmation code for the entered address."""

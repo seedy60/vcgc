@@ -253,6 +253,50 @@ def test_on_server_clear_ui_resets_menu_and_audio():
     assert window.sound_events == ["remove", "stop_music:True", "stop_ambience:False"]
 
 
+def test_on_app_activate_restores_open_account_settings_dialog(monkeypatch):
+    """Returning to the app brings the settings dialog back to the foreground."""
+    window = make_window()
+    calls = []
+    dialog = types.SimpleNamespace(
+        IsShown=lambda: True,
+        Raise=lambda: calls.append("raise"),
+        SetFocus=lambda: calls.append("focus"),
+    )
+    window.account_email_dialog = dialog
+    event = types.SimpleNamespace(GetActive=lambda: True, Skip=lambda: None)
+    monkeypatch.setattr(
+        main_mod.wx,
+        "CallAfter",
+        lambda callback, *args, **kwargs: callback(*args, **kwargs),
+    )
+
+    main_mod.MainWindow.on_app_activate(window, event)
+
+    assert calls == ["raise", "focus"]
+
+
+def test_on_app_activate_ignores_app_deactivation(monkeypatch):
+    """Deactivating the app must not pull focus away from the new window."""
+    window = make_window()
+    calls = []
+    dialog = types.SimpleNamespace(
+        IsShown=lambda: True,
+        Raise=lambda: calls.append("raise"),
+        SetFocus=lambda: calls.append("focus"),
+    )
+    window.account_email_dialog = dialog
+    event = types.SimpleNamespace(GetActive=lambda: False, Skip=lambda: None)
+    monkeypatch.setattr(
+        main_mod.wx,
+        "CallAfter",
+        lambda callback, *args, **kwargs: callback(*args, **kwargs),
+    )
+
+    main_mod.MainWindow.on_app_activate(window, event)
+
+    assert calls == []
+
+
 def test_on_server_status_records_last_message():
     window = make_window()
     packet = {
