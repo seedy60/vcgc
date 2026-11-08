@@ -661,6 +661,96 @@
         "title": "RemoveTablePasswordCommandPacket",
         "type": "object"
       },
+      "RequestEmailChangePacket": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "type": {
+            "const": "request_email_change",
+            "default": "request_email_change",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "RequestEmailChangePacket",
+        "type": "object"
+      },
+      "RequestPasswordResetPacket": {
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "const": "request_password_reset",
+            "default": "request_password_reset",
+            "title": "Type",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username"
+        ],
+        "title": "RequestPasswordResetPacket",
+        "type": "object"
+      },
+      "ResendVerificationPacket": {
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "const": "resend_verification",
+            "default": "resend_verification",
+            "title": "Type",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username"
+        ],
+        "title": "ResendVerificationPacket",
+        "type": "object"
+      },
+      "ResetPasswordPacket": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "new_password": {
+            "title": "New Password",
+            "type": "string"
+          },
+          "type": {
+            "const": "reset_password",
+            "default": "reset_password",
+            "title": "Type",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "code",
+          "new_password"
+        ],
+        "title": "ResetPasswordPacket",
+        "type": "object"
+      },
       "SetTablePasswordCommandPacket": {
         "additionalProperties": false,
         "properties": {
@@ -730,6 +820,51 @@
         ],
         "title": "SlashCommandPacket",
         "type": "object"
+      },
+      "VerifyEmailChangePacket": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "type": {
+            "const": "verify_email_change",
+            "default": "verify_email_change",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "VerifyEmailChangePacket",
+        "type": "object"
+      },
+      "VerifyEmailPacket": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "type": {
+            "const": "verify_email",
+            "default": "verify_email",
+            "title": "Type",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "code"
+        ],
+        "title": "VerifyEmailPacket",
+        "type": "object"
       }
     },
     "discriminator": {
@@ -753,9 +888,15 @@
         "refresh_session": "#/$defs/RefreshSessionPacket",
         "register": "#/$defs/RegisterPacket",
         "remove_table_pw_cmd": "#/$defs/RemoveTablePasswordCommandPacket",
+        "request_email_change": "#/$defs/RequestEmailChangePacket",
+        "request_password_reset": "#/$defs/RequestPasswordResetPacket",
+        "resend_verification": "#/$defs/ResendVerificationPacket",
+        "reset_password": "#/$defs/ResetPasswordPacket",
         "set_table_pw_cmd": "#/$defs/SetTablePasswordCommandPacket",
         "set_table_visibility_cmd": "#/$defs/SetTableVisibilityCommandPacket",
-        "slash_command": "#/$defs/SlashCommandPacket"
+        "slash_command": "#/$defs/SlashCommandPacket",
+        "verify_email": "#/$defs/VerifyEmailPacket",
+        "verify_email_change": "#/$defs/VerifyEmailChangePacket"
       },
       "propertyName": "type"
     },
@@ -765,6 +906,24 @@
       },
       {
         "$ref": "#/$defs/RegisterPacket"
+      },
+      {
+        "$ref": "#/$defs/VerifyEmailPacket"
+      },
+      {
+        "$ref": "#/$defs/ResendVerificationPacket"
+      },
+      {
+        "$ref": "#/$defs/RequestPasswordResetPacket"
+      },
+      {
+        "$ref": "#/$defs/ResetPasswordPacket"
+      },
+      {
+        "$ref": "#/$defs/RequestEmailChangePacket"
+      },
+      {
+        "$ref": "#/$defs/VerifyEmailChangePacket"
       },
       {
         "$ref": "#/$defs/RefreshSessionPacket"
@@ -1141,6 +1300,166 @@
         "title": "DocumentEditorPacket",
         "type": "object"
       },
+      "EmailChangeCompletePacket": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "const": "email_change_complete",
+            "default": "email_change_complete",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "message"
+        ],
+        "title": "EmailChangeCompletePacket",
+        "type": "object"
+      },
+      "EmailChangeFailedPacket": {
+        "additionalProperties": false,
+        "properties": {
+          "attempts_remaining": {
+            "default": 0,
+            "title": "Attempts Remaining",
+            "type": "integer"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "const": "email_change_failed",
+            "default": "email_change_failed",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "EmailChangeFailedPacket",
+        "type": "object"
+      },
+      "EmailChangePendingPacket": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "expires_in": {
+            "default": 0,
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "const": "email_change_pending",
+            "default": "email_change_pending",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "message"
+        ],
+        "title": "EmailChangePendingPacket",
+        "type": "object"
+      },
+      "EmailVerificationFailedPacket": {
+        "additionalProperties": false,
+        "properties": {
+          "attempts_remaining": {
+            "default": 0,
+            "title": "Attempts Remaining",
+            "type": "integer"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "const": "email_verification_failed",
+            "default": "email_verification_failed",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "EmailVerificationFailedPacket",
+        "type": "object"
+      },
+      "EmailVerificationRequiredPacket": {
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "const": "email_verification_required",
+            "default": "email_verification_required",
+            "title": "Type",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "message"
+        ],
+        "title": "EmailVerificationRequiredPacket",
+        "type": "object"
+      },
+      "EmailVerifiedPacket": {
+        "additionalProperties": false,
+        "properties": {
+          "approved": {
+            "default": false,
+            "title": "Approved",
+            "type": "boolean"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "const": "email_verified",
+            "default": "email_verified",
+            "title": "Type",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "message"
+        ],
+        "title": "EmailVerifiedPacket",
+        "type": "object"
+      },
       "GameInfo": {
         "properties": {
           "name": {
@@ -1425,6 +1744,46 @@
         "title": "MenuPacket",
         "type": "object"
       },
+      "OpenAccountSettingsPacket": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "default": true,
+            "title": "Available",
+            "type": "boolean"
+          },
+          "email": {
+            "default": "",
+            "title": "Email",
+            "type": "string"
+          },
+          "email_verified": {
+            "default": false,
+            "title": "Email Verified",
+            "type": "boolean"
+          },
+          "message": {
+            "default": "",
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "const": "open_account_settings",
+            "default": "open_account_settings",
+            "title": "Type",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username"
+        ],
+        "title": "OpenAccountSettingsPacket",
+        "type": "object"
+      },
       "OpenClientOptionsPacket": {
         "additionalProperties": false,
         "properties": {
@@ -1459,6 +1818,71 @@
           }
         },
         "title": "OpenServerOptionsPacket",
+        "type": "object"
+      },
+      "PasswordResetCompletePacket": {
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "const": "password_reset_complete",
+            "default": "password_reset_complete",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "PasswordResetCompletePacket",
+        "type": "object"
+      },
+      "PasswordResetFailedPacket": {
+        "additionalProperties": false,
+        "properties": {
+          "attempts_remaining": {
+            "default": 0,
+            "title": "Attempts Remaining",
+            "type": "integer"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "const": "password_reset_failed",
+            "default": "password_reset_failed",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "PasswordResetFailedPacket",
+        "type": "object"
+      },
+      "PasswordResetRequestedPacket": {
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "const": "password_reset_requested",
+            "default": "password_reset_requested",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "PasswordResetRequestedPacket",
         "type": "object"
       },
       "PlayAmbiencePacket": {
@@ -1656,6 +2080,91 @@
         "title": "RefreshSessionSuccessPacket",
         "type": "object"
       },
+      "RegistrationErrorPacket": {
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "const": "registration_error",
+            "default": "registration_error",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "RegistrationErrorPacket",
+        "type": "object"
+      },
+      "RegistrationPendingPacket": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "email_sent": {
+            "default": true,
+            "title": "Email Sent",
+            "type": "boolean"
+          },
+          "expires_in": {
+            "default": 0,
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "const": "registration_pending",
+            "default": "registration_pending",
+            "title": "Type",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "email",
+          "message"
+        ],
+        "title": "RegistrationPendingPacket",
+        "type": "object"
+      },
+      "RegistrationRequiredPacket": {
+        "additionalProperties": false,
+        "properties": {
+          "email_required": {
+            "default": true,
+            "title": "Email Required",
+            "type": "boolean"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "const": "registration_required",
+            "default": "registration_required",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "RegistrationRequiredPacket",
+        "type": "object"
+      },
       "RemovePlaylistPacket": {
         "additionalProperties": false,
         "properties": {
@@ -1700,6 +2209,11 @@
           "multiline": {
             "default": false,
             "title": "Multiline",
+            "type": "boolean"
+          },
+          "password": {
+            "default": false,
+            "title": "Password",
             "type": "boolean"
           },
           "prompt": {
@@ -1931,6 +2445,31 @@
         ],
         "title": "UpdateOptionsListsPacket",
         "type": "object"
+      },
+      "VerificationResentPacket": {
+        "additionalProperties": false,
+        "properties": {
+          "email_sent": {
+            "default": true,
+            "title": "Email Sent",
+            "type": "boolean"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "const": "verification_resent",
+            "default": "verification_resent",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "VerificationResentPacket",
+        "type": "object"
       }
     },
     "discriminator": {
@@ -1941,17 +2480,30 @@
         "clear_ui": "#/$defs/ClearUIPacket",
         "disconnect": "#/$defs/DisconnectPacket",
         "document_editor": "#/$defs/DocumentEditorPacket",
+        "email_change_complete": "#/$defs/EmailChangeCompletePacket",
+        "email_change_failed": "#/$defs/EmailChangeFailedPacket",
+        "email_change_pending": "#/$defs/EmailChangePendingPacket",
+        "email_verification_failed": "#/$defs/EmailVerificationFailedPacket",
+        "email_verification_required": "#/$defs/EmailVerificationRequiredPacket",
+        "email_verified": "#/$defs/EmailVerifiedPacket",
         "game_list": "#/$defs/GameListPacket",
         "get_playlist_duration": "#/$defs/GetPlaylistDurationPacket",
         "menu": "#/$defs/MenuPacket",
+        "open_account_settings": "#/$defs/OpenAccountSettingsPacket",
         "open_client_options": "#/$defs/OpenClientOptionsPacket",
         "open_server_options": "#/$defs/OpenServerOptionsPacket",
+        "password_reset_complete": "#/$defs/PasswordResetCompletePacket",
+        "password_reset_failed": "#/$defs/PasswordResetFailedPacket",
+        "password_reset_requested": "#/$defs/PasswordResetRequestedPacket",
         "play_ambience": "#/$defs/PlayAmbiencePacket",
         "play_music": "#/$defs/PlayMusicPacket",
         "play_sound": "#/$defs/PlaySoundPacket",
         "pong": "#/$defs/PongPacket",
         "refresh_session_failure": "#/$defs/RefreshSessionFailurePacket",
         "refresh_session_success": "#/$defs/RefreshSessionSuccessPacket",
+        "registration_error": "#/$defs/RegistrationErrorPacket",
+        "registration_pending": "#/$defs/RegistrationPendingPacket",
+        "registration_required": "#/$defs/RegistrationRequiredPacket",
         "remove_playlist": "#/$defs/RemovePlaylistPacket",
         "request_input": "#/$defs/RequestInputPacket",
         "server_status": "#/$defs/ServerStatusPacket",
@@ -1960,7 +2512,8 @@
         "stop_ambience": "#/$defs/StopAmbiencePacket",
         "stop_music": "#/$defs/StopMusicPacket",
         "table_create": "#/$defs/TableCreatePacket",
-        "update_options_lists": "#/$defs/UpdateOptionsListsPacket"
+        "update_options_lists": "#/$defs/UpdateOptionsListsPacket",
+        "verification_resent": "#/$defs/VerificationResentPacket"
       },
       "propertyName": "type"
     },
@@ -1973,6 +2526,48 @@
       },
       {
         "$ref": "#/$defs/RefreshSessionFailurePacket"
+      },
+      {
+        "$ref": "#/$defs/RegistrationRequiredPacket"
+      },
+      {
+        "$ref": "#/$defs/RegistrationErrorPacket"
+      },
+      {
+        "$ref": "#/$defs/RegistrationPendingPacket"
+      },
+      {
+        "$ref": "#/$defs/EmailVerificationRequiredPacket"
+      },
+      {
+        "$ref": "#/$defs/EmailVerifiedPacket"
+      },
+      {
+        "$ref": "#/$defs/EmailVerificationFailedPacket"
+      },
+      {
+        "$ref": "#/$defs/VerificationResentPacket"
+      },
+      {
+        "$ref": "#/$defs/PasswordResetRequestedPacket"
+      },
+      {
+        "$ref": "#/$defs/PasswordResetCompletePacket"
+      },
+      {
+        "$ref": "#/$defs/PasswordResetFailedPacket"
+      },
+      {
+        "$ref": "#/$defs/OpenAccountSettingsPacket"
+      },
+      {
+        "$ref": "#/$defs/EmailChangePendingPacket"
+      },
+      {
+        "$ref": "#/$defs/EmailChangeCompletePacket"
+      },
+      {
+        "$ref": "#/$defs/EmailChangeFailedPacket"
       },
       {
         "$ref": "#/$defs/SpeakPacket"

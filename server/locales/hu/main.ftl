@@ -380,3 +380,25 @@ virtual-bots-profiles-line = { $profile } ({ $bot_count } bot) felülírások: {
 virtual-bots-profiles-no-overrides = örökli az alap konfigurációt
 
 localization-in-progress-try-again = A lokalizáció folyamatban van. Kérjük, próbálja újra egy perc múlva.
+
+# Self-service password change
+change-password-option = Jelszó módosítása
+change-password-current-prompt = Adja meg a jelenlegi jelszavát:
+change-password-new-prompt = Adja meg az új jelszavát ({ $min }-{ $max } karakter):
+change-password-confirm-prompt = Adja meg újra az új jelszavát:
+change-password-wrong-current = Ez nem a jelenlegi jelszava. A jelszó nem változott.
+change-password-mismatch = A jelszavak nem egyeznek. Próbálja újra.
+change-password-success = A jelszava megváltozott.
+change-password-cancelled = A jelszó módosítása megszakítva.
+
+# Account email settings
+email-change-invalid = Enter a valid email address.
+email-change-same = That is already your verified email address.
+email-change-unavailable = Email settings are not available on this server. Contact the server owner.
+email-change-send-failed = The confirmation email could not be sent. Try again later.
+email-change-pending = A confirmation code was sent to { $email }. Your current email stays active until you confirm the change.
+email-change-success = Email address updated.
+email-change-code-invalid = That confirmation code is invalid or expired.
+email-change-code-expired = That confirmation code has expired. Request a new one.
+email-change-code-locked = Too many incorrect attempts. Request a new confirmation code.
+account-settings = Account settings

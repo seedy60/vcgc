@@ -18,6 +18,7 @@ tables-menu-title = Tables disponibles
 play = Jouer
 view-active-tables = Voir les tables actives
 options = Options
+account-settings = Account settings
 logout = Déconnexion
 back = Retour
 context-menu = Menu contextuel.
@@ -384,3 +385,24 @@ virtual-bots-profiles-line = { $profile } ({ $bot_count } bots) remplacements : 
 virtual-bots-profiles-no-overrides = hérite de la configuration de base
 
 localization-in-progress-try-again = La localisation est en cours. Veuillez réessayer dans une minute.
+
+# Self-service password change
+change-password-option = Changer le mot de passe
+change-password-current-prompt = Saisissez votre mot de passe actuel :
+change-password-new-prompt = Saisissez votre nouveau mot de passe ({ $min }-{ $max } caractères) :
+change-password-confirm-prompt = Saisissez à nouveau votre nouveau mot de passe :
+change-password-wrong-current = Ce n'est pas votre mot de passe actuel. Le mot de passe n'a pas été modifié.
+change-password-mismatch = Les mots de passe ne correspondent pas. Réessayez.
+change-password-success = Votre mot de passe a été modifié.
+change-password-cancelled = Changement de mot de passe annulé.
+
+# Account email settings
+email-change-invalid = Enter a valid email address.
+email-change-same = That is already your verified email address.
+email-change-unavailable = Email settings are not available on this server. Contact the server owner.
+email-change-send-failed = The confirmation email could not be sent. Try again later.
+email-change-pending = A confirmation code was sent to { $email }. Your current email stays active until you confirm the change.
+email-change-success = Email address updated.
+email-change-code-invalid = That confirmation code is invalid or expired.
+email-change-code-expired = That confirmation code has expired. Request a new one.
+email-change-code-locked = Too many incorrect attempts. Request a new confirmation code.

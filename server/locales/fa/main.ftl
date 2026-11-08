@@ -380,3 +380,25 @@ virtual-bots-profiles-line = { $profile } ({ $bot_count } ربات) بازنوی
 virtual-bots-profiles-no-overrides = ارث‌بری پیکربندی پایه
 
 localization-in-progress-try-again = بومی‌سازی در حال انجام است. لطفاً یک دقیقه دیگر دوباره تلاش کنید.
+
+# Self-service password change
+change-password-option = تغییر گذرواژه
+change-password-current-prompt = گذرواژه فعلی خود را وارد کنید:
+change-password-new-prompt = گذرواژه جدید خود را وارد کنید ({ $min }-{ $max } نویسه):
+change-password-confirm-prompt = گذرواژه جدید خود را دوباره وارد کنید:
+change-password-wrong-current = این گذرواژه فعلی شما نیست. گذرواژه تغییر نکرد.
+change-password-mismatch = گذرواژه‌ها مطابقت ندارند. دوباره تلاش کنید.
+change-password-success = گذرواژه شما تغییر کرد.
+change-password-cancelled = تغییر گذرواژه لغو شد.
+
+# Account email settings
+email-change-invalid = Enter a valid email address.
+email-change-same = That is already your verified email address.
+email-change-unavailable = Email settings are not available on this server. Contact the server owner.
+email-change-send-failed = The confirmation email could not be sent. Try again later.
+email-change-pending = A confirmation code was sent to { $email }. Your current email stays active until you confirm the change.
+email-change-success = Email address updated.
+email-change-code-invalid = That confirmation code is invalid or expired.
+email-change-code-expired = That confirmation code has expired. Request a new one.
+email-change-code-locked = Too many incorrect attempts. Request a new confirmation code.
+account-settings = Account settings

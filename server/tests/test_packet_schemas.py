@@ -21,6 +21,8 @@ CLIENT_TO_SERVER_SAMPLES = [
     {"type": "authorize", "username": "user", "password": "pw"},
     {"type": "authorize", "username": "user", "session_token": "token"},
     {"type": "register", "username": "user", "password": "pw", "email": "e@example.com"},
+    {"type": "request_email_change", "email": "new@example.com"},
+    {"type": "verify_email_change", "code": "1234567890"},
     {
         "type": "refresh_session",
         "refresh_token": "rtok",
@@ -83,6 +85,12 @@ SERVER_TO_CLIENT_SAMPLES = [
     {"type": "stop_ambience"},
     {"type": "menu", "menu_id": "main", "items": ["Play"]},
     {"type": "request_input", "input_id": "chat", "prompt": "Say something"},
+    {
+        "type": "request_input",
+        "input_id": "password",
+        "prompt": "Enter password",
+        "password": True,
+    },
     {"type": "clear_ui"},
     {
         "type": "disconnect",
@@ -118,6 +126,25 @@ SERVER_TO_CLIENT_SAMPLES = [
     },
     {"type": "open_client_options", "options": {}},
     {"type": "open_server_options", "options": {}},
+    {
+        "type": "open_account_settings",
+        "username": "user",
+        "email": "old@example.com",
+        "email_verified": True,
+        "available": True,
+    },
+    {
+        "type": "email_change_pending",
+        "email": "new@example.com",
+        "message": "A confirmation code was sent.",
+        "expires_in": 900,
+    },
+    {
+        "type": "email_change_complete",
+        "email": "new@example.com",
+        "message": "Email address updated.",
+    },
+    {"type": "email_change_failed", "message": "Invalid code"},
 ]
 
 

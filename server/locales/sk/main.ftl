@@ -388,3 +388,25 @@ virtual-bots-profiles-line = { $profile } ({ $bot_count } botov) prepíše: { $o
 virtual-bots-profiles-no-overrides = dedí základnú konfiguráciu
 
 localization-in-progress-try-again = Lokalizácia sa stále načítava. Skúste to prosím znova o minútu.
+
+# Self-service password change
+change-password-option = Zmeniť heslo
+change-password-current-prompt = Zadajte svoje aktuálne heslo:
+change-password-new-prompt = Zadajte svoje nové heslo ({ $min }-{ $max } znakov):
+change-password-confirm-prompt = Zadajte nové heslo znova:
+change-password-wrong-current = Toto nie je vaše aktuálne heslo. Heslo nebolo zmenené.
+change-password-mismatch = Heslá sa nezhodujú. Skúste to znova.
+change-password-success = Vaše heslo bolo zmenené.
+change-password-cancelled = Zmena hesla bola zrušená.
+
+# Account email settings
+email-change-invalid = Enter a valid email address.
+email-change-same = That is already your verified email address.
+email-change-unavailable = Email settings are not available on this server. Contact the server owner.
+email-change-send-failed = The confirmation email could not be sent. Try again later.
+email-change-pending = A confirmation code was sent to { $email }. Your current email stays active until you confirm the change.
+email-change-success = Email address updated.
+email-change-code-invalid = That confirmation code is invalid or expired.
+email-change-code-expired = That confirmation code has expired. Request a new one.
+email-change-code-locked = Too many incorrect attempts. Request a new confirmation code.
+account-settings = Account settings

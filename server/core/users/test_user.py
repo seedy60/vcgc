@@ -188,6 +188,7 @@ class MockUser(User):
         *,
         multiline: bool = False,
         read_only: bool = False,
+        password: bool = False,
         content_format: str = "text",
     ) -> None:
         """Record editbox display state and message."""
@@ -196,6 +197,7 @@ class MockUser(User):
             "default_value": default_value,
             "multiline": multiline,
             "read_only": read_only,
+            "password": password,
             "content_format": content_format,
         }
         self.editboxes[input_id] = editbox_data

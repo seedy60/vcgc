@@ -380,3 +380,25 @@ virtual-bots-profiles-line = { $profile } ({ $bot_count } bot) override: { $over
 virtual-bots-profiles-no-overrides = mewarisi konfigurasi dasar
 
 localization-in-progress-try-again = Lokalisasi sedang diproses. Silakan coba lagi dalam satu menit.
+
+# Self-service password change
+change-password-option = Ubah Kata Sandi
+change-password-current-prompt = Masukkan kata sandi Anda saat ini:
+change-password-new-prompt = Masukkan kata sandi baru Anda ({ $min }-{ $max } karakter):
+change-password-confirm-prompt = Masukkan kembali kata sandi baru Anda:
+change-password-wrong-current = Itu bukan kata sandi Anda saat ini. Kata sandi tidak diubah.
+change-password-mismatch = Kata sandi tidak cocok. Coba lagi.
+change-password-success = Kata sandi Anda telah diubah.
+change-password-cancelled = Perubahan kata sandi dibatalkan.
+
+# Account email settings
+email-change-invalid = Enter a valid email address.
+email-change-same = That is already your verified email address.
+email-change-unavailable = Email settings are not available on this server. Contact the server owner.
+email-change-send-failed = The confirmation email could not be sent. Try again later.
+email-change-pending = A confirmation code was sent to { $email }. Your current email stays active until you confirm the change.
+email-change-success = Email address updated.
+email-change-code-invalid = That confirmation code is invalid or expired.
+email-change-code-expired = That confirmation code has expired. Request a new one.
+email-change-code-locked = Too many incorrect attempts. Request a new confirmation code.
+account-settings = Account settings

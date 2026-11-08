@@ -712,10 +712,10 @@ def _run_simulate(args):
                     print(f"  - {issue}")
 
 
-def _prompt_for_password() -> str:
+def _prompt_for_password(label: str = "New password") -> str:
     """Interactively prompt for a password twice."""
     while True:
-        pw = getpass("New owner password: ")
+        pw = getpass(f"{label}: ")
         confirm = getpass("Confirm password: ")
         if pw != confirm:
             print("Passwords do not match. Try again.")
@@ -726,8 +726,8 @@ def _prompt_for_password() -> str:
         return pw
 
 
-def _resolve_bootstrap_password(args: argparse.Namespace) -> str:
-    """Resolve password from CLI arguments."""
+def _resolve_password(args: argparse.Namespace, *, label: str) -> str:
+    """Resolve a password from CLI arguments or an interactive prompt."""
     if args.password is not None:
         return args.password
     if args.password_file:
@@ -736,7 +736,34 @@ def _resolve_bootstrap_password(args: argparse.Namespace) -> str:
     if args.password_stdin:
         data = sys.stdin.read()
         return data.rstrip("\r\n")
-    return _prompt_for_password()
+    return _prompt_for_password(label)
+
+
+def _default_db_path() -> Path:
+    """Return the database path used by the server's default configuration."""
+    return Path(__file__).resolve().parents[1] / "var" / "server" / "playpalace.db"
+
+
+def _resolve_db_path(db_path: str | Path | None) -> Path:
+    """Resolve an explicit database path or fall back to the server default."""
+    return Path(db_path).expanduser() if db_path else _default_db_path()
+
+
+def _add_password_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add the shared password-source arguments to a subcommand parser."""
+    parser.add_argument(
+        "--password",
+        help="Password (use with caution; prefer --password-file or interactive prompt)",
+    )
+    parser.add_argument(
+        "--password-file",
+        help="File containing the password (first line used)",
+    )
+    parser.add_argument(
+        "--password-stdin",
+        action="store_true",
+        help="Read the password from stdin (useful for automation)",
+    )
 
 
 def bootstrap_owner(
@@ -757,7 +784,9 @@ def bootstrap_owner(
     if not password:
         raise RuntimeError("Password cannot be empty.")
 
-    database = Database(db_path)
+    db_file = Path(db_path)
+    db_file.parent.mkdir(parents=True, exist_ok=True)
+    database = Database(db_file)
     database.connect()
 
     try:
@@ -799,14 +828,14 @@ def bootstrap_owner(
 def cmd_bootstrap_owner(args: argparse.Namespace) -> None:
     """Handle the bootstrap-owner CLI command."""
     try:
-        password = _resolve_bootstrap_password(args)
+        password = _resolve_password(args, label="New owner password")
     except Exception as exc:  # pragma: no cover - defensive
         print(f"Error reading password: {exc}", file=sys.stderr)
         sys.exit(1)
 
     try:
         bootstrap_owner(
-            db_path=args.db_path,
+            db_path=str(_resolve_db_path(args.db_path)),
             username=args.username,
             password=password,
             locale=args.locale,
@@ -816,6 +845,80 @@ def cmd_bootstrap_owner(args: argparse.Namespace) -> None:
     except RuntimeError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
+
+
+def reset_password(
+    *, db_path: str | Path, username: str, password: str, quiet: bool = False
+) -> None:
+    """Replace an existing account's password and revoke its refresh tokens.
+
+    Raises RuntimeError when the database or account is missing.
+    """
+    if not password:
+        raise RuntimeError("Password cannot be empty.")
+
+    db_file = _resolve_db_path(db_path)
+    if not db_file.exists():
+        raise RuntimeError(
+            f"Database '{db_file}' does not exist. Start the server once or pass --db-path."
+        )
+
+    database = Database(db_file)
+    database.connect()
+    try:
+        if not database.user_exists(username):
+            raise RuntimeError(f"User '{username}' does not exist.")
+        auth = AuthManager(database)
+        if not auth.reset_password(username, password):
+            raise RuntimeError(f"Could not reset the password for '{username}'.")
+        if not quiet:
+            print(f"Reset password for '{username}' in {db_file}.")
+    finally:
+        database.close()
+
+
+def cmd_reset_password(args: argparse.Namespace) -> None:
+    """Handle the reset-password CLI command."""
+    try:
+        password = _resolve_password(args, label="New password")
+    except Exception as exc:  # pragma: no cover - defensive
+        print(f"Error reading password: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        reset_password(
+            db_path=args.db_path,
+            username=args.username,
+            password=password,
+            quiet=args.quiet,
+        )
+    except RuntimeError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_list_users(args: argparse.Namespace) -> None:
+    """Handle the list-users CLI command."""
+    db_file = _resolve_db_path(args.db_path)
+    if not db_file.exists():
+        print(f"Error: Database '{db_file}' does not exist.", file=sys.stderr)
+        sys.exit(1)
+
+    database = Database(db_file)
+    database.connect()
+    try:
+        users = database.get_all_users()
+    finally:
+        database.close()
+
+    if not users:
+        print(f"No users in {db_file}.")
+        return
+
+    print(f"{len(users)} user(s) in {db_file}:")
+    for user in users:
+        status = "" if user.approved else " (pending approval)"
+        print(f"  {user.username}: {user.trust_level.name}{status}")
 
 
 def main():
@@ -893,22 +996,10 @@ def main():
         required=True,
         help="Username for the server owner account",
     )
-    bootstrap_parser.add_argument(
-        "--password",
-        help="Password for the server owner (use with caution; prefer --password-file or interactive prompt)",
-    )
-    bootstrap_parser.add_argument(
-        "--password-file",
-        help="File containing the password (first line used)",
-    )
-    bootstrap_parser.add_argument(
-        "--password-stdin",
-        action="store_true",
-        help="Read password from stdin (useful for automation)",
-    )
+    _add_password_arguments(bootstrap_parser)
     bootstrap_parser.add_argument(
         "--db-path",
-        default="playpalace.db",
+        default=None,
         help="Path to the server database (default resolves to var/server/playpalace.db)",
     )
     bootstrap_parser.add_argument(
@@ -927,6 +1018,39 @@ def main():
         help="Suppress success output (useful for CI)",
     )
 
+    # reset-password command
+    reset_parser = subparsers.add_parser(
+        "reset-password",
+        help="Set a new password for an existing account",
+    )
+    reset_parser.add_argument(
+        "--username",
+        required=True,
+        help="Account whose password will be reset",
+    )
+    _add_password_arguments(reset_parser)
+    reset_parser.add_argument(
+        "--db-path",
+        default=None,
+        help="Path to the server database (default resolves to var/server/playpalace.db)",
+    )
+    reset_parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress success output (useful for CI)",
+    )
+
+    # list-users command
+    list_users_parser = subparsers.add_parser(
+        "list-users",
+        help="List accounts and their trust levels",
+    )
+    list_users_parser.add_argument(
+        "--db-path",
+        default=None,
+        help="Path to the server database (default resolves to var/server/playpalace.db)",
+    )
+
     args = parser.parse_args()
 
     if args.command == "list-games":
@@ -937,6 +1061,10 @@ def main():
         cmd_simulate(args)
     elif args.command == "bootstrap-owner":
         cmd_bootstrap_owner(args)
+    elif args.command == "reset-password":
+        cmd_reset_password(args)
+    elif args.command == "list-users":
+        cmd_list_users(args)
     else:
         parser.print_help()
         sys.exit(1)

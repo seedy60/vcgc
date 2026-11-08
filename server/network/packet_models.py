@@ -66,6 +66,39 @@ class RegisterPacket(BasePacket):
     locale: str | None = None
 
 
+class VerifyEmailPacket(BasePacket):
+    type: Literal["verify_email"] = "verify_email"
+    username: str
+    code: str
+
+
+class ResendVerificationPacket(BasePacket):
+    type: Literal["resend_verification"] = "resend_verification"
+    username: str
+
+
+class RequestPasswordResetPacket(BasePacket):
+    type: Literal["request_password_reset"] = "request_password_reset"
+    username: str
+
+
+class ResetPasswordPacket(BasePacket):
+    type: Literal["reset_password"] = "reset_password"
+    username: str
+    code: str
+    new_password: str
+
+
+class RequestEmailChangePacket(BasePacket):
+    type: Literal["request_email_change"] = "request_email_change"
+    email: str
+
+
+class VerifyEmailChangePacket(BasePacket):
+    type: Literal["verify_email_change"] = "verify_email_change"
+    code: str
+
+
 class RefreshSessionPacket(BasePacket):
     type: Literal["refresh_session"] = "refresh_session"
     refresh_token: str
@@ -183,6 +216,12 @@ ClientToServerPacket = Annotated[
     Union[
         AuthorizePacket,
         RegisterPacket,
+        VerifyEmailPacket,
+        ResendVerificationPacket,
+        RequestPasswordResetPacket,
+        ResetPasswordPacket,
+        RequestEmailChangePacket,
+        VerifyEmailChangePacket,
         RefreshSessionPacket,
         MenuSelectionPacket,
         KeybindPacket,
@@ -237,6 +276,95 @@ class RefreshSessionSuccessPacket(BasePacket):
 class RefreshSessionFailurePacket(BasePacket):
     type: Literal["refresh_session_failure"] = "refresh_session_failure"
     message: str
+
+
+class RegistrationRequiredPacket(BasePacket):
+    type: Literal["registration_required"] = "registration_required"
+    message: str
+    email_required: bool = True
+
+
+class RegistrationErrorPacket(BasePacket):
+    type: Literal["registration_error"] = "registration_error"
+    message: str
+
+
+class RegistrationPendingPacket(BasePacket):
+    type: Literal["registration_pending"] = "registration_pending"
+    username: str
+    email: str
+    message: str
+    email_sent: bool = True
+    expires_in: int = 0
+
+
+class EmailVerificationRequiredPacket(BasePacket):
+    type: Literal["email_verification_required"] = "email_verification_required"
+    username: str
+    message: str
+
+
+class EmailVerifiedPacket(BasePacket):
+    type: Literal["email_verified"] = "email_verified"
+    username: str
+    approved: bool = False
+    message: str
+
+
+class EmailVerificationFailedPacket(BasePacket):
+    type: Literal["email_verification_failed"] = "email_verification_failed"
+    message: str
+    attempts_remaining: int = 0
+
+
+class VerificationResentPacket(BasePacket):
+    type: Literal["verification_resent"] = "verification_resent"
+    message: str
+    email_sent: bool = True
+
+
+class PasswordResetRequestedPacket(BasePacket):
+    type: Literal["password_reset_requested"] = "password_reset_requested"
+    message: str
+
+
+class PasswordResetCompletePacket(BasePacket):
+    type: Literal["password_reset_complete"] = "password_reset_complete"
+    message: str
+
+
+class PasswordResetFailedPacket(BasePacket):
+    type: Literal["password_reset_failed"] = "password_reset_failed"
+    message: str
+    attempts_remaining: int = 0
+
+
+class OpenAccountSettingsPacket(BasePacket):
+    type: Literal["open_account_settings"] = "open_account_settings"
+    username: str
+    email: str = ""
+    email_verified: bool = False
+    available: bool = True
+    message: str = ""
+
+
+class EmailChangePendingPacket(BasePacket):
+    type: Literal["email_change_pending"] = "email_change_pending"
+    email: str
+    message: str
+    expires_in: int = 0
+
+
+class EmailChangeCompletePacket(BasePacket):
+    type: Literal["email_change_complete"] = "email_change_complete"
+    email: str
+    message: str
+
+
+class EmailChangeFailedPacket(BasePacket):
+    type: Literal["email_change_failed"] = "email_change_failed"
+    message: str
+    attempts_remaining: int = 0
 
 
 class SpeakPacket(BasePacket):
@@ -295,6 +423,7 @@ class RequestInputPacket(BasePacket):
     default_value: str = ""
     multiline: bool = False
     read_only: bool = False
+    password: bool = False
     content_format: Literal["text", "markdown"] = "text"
 
 
@@ -416,6 +545,20 @@ ServerToClientPacket = Annotated[
         AuthorizeSuccessPacket,
         RefreshSessionSuccessPacket,
         RefreshSessionFailurePacket,
+        RegistrationRequiredPacket,
+        RegistrationErrorPacket,
+        RegistrationPendingPacket,
+        EmailVerificationRequiredPacket,
+        EmailVerifiedPacket,
+        EmailVerificationFailedPacket,
+        VerificationResentPacket,
+        PasswordResetRequestedPacket,
+        PasswordResetCompletePacket,
+        PasswordResetFailedPacket,
+        OpenAccountSettingsPacket,
+        EmailChangePendingPacket,
+        EmailChangeCompletePacket,
+        EmailChangeFailedPacket,
         SpeakPacket,
         PlaySoundPacket,
         PlayMusicPacket,
@@ -449,6 +592,18 @@ SERVER_TO_CLIENT_PACKET_ADAPTER = TypeAdapter(ServerToClientPacket)
 __all__ = [
     "CLIENT_TO_SERVER_PACKET_ADAPTER",
     "ClientToServerPacket",
+    "RegistrationRequiredPacket",
+    "RegistrationPendingPacket",
+    "EmailVerificationRequiredPacket",
+    "EmailVerifiedPacket",
+    "PasswordResetRequestedPacket",
+    "PasswordResetCompletePacket",
+    "RequestEmailChangePacket",
+    "VerifyEmailChangePacket",
+    "OpenAccountSettingsPacket",
+    "EmailChangePendingPacket",
+    "EmailChangeCompletePacket",
+    "EmailChangeFailedPacket",
     "SERVER_TO_CLIENT_PACKET_ADAPTER",
     "ServerToClientPacket",
 ]

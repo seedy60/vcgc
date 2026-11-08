@@ -60,6 +60,8 @@ Common options:
 - `--ssl-key PATH` - SSL private key for WSS
 - `--preload-locales` - Block startup until every Fluent bundle compiles, instead of warming them in the background.
 
+Compiled localization bundles are cached under `server/.cache/locales`, so only the first start (or the first start after editing `.ftl` files) pays the compile cost. Delete that directory, or set `PLAYPALACE_DISABLE_LOCALE_CACHE=1`, to force a full rebuild.
+
 On the first launch, the server copies `config.example.toml` to `config.toml`, prints a reminder to edit it, and exits so you can review the settings. When a config file exists but the database is empty, the server (only when attached to a TTY) prompts you to create the initial owner account; in headless environments, run `uv run python -m server.cli bootstrap-owner --username <name>` instead.
 
 ### Running with SSL/WSS (Secure WebSocket)
@@ -170,6 +172,40 @@ Values are in bytes and map directly to the `max_size` setting used by the under
 Set `allow_insecure_ws` to `true` only for trusted development setups where TLS certificates are unavailable; the server will refuse to start without TLS when this flag is `false`, and it will print a loud warning whenever it runs in plaintext mode.
 You cannot combine `allow_insecure_ws = true` with `--ssl-cert/--ssl-key`; pick either plaintext development mode or full TLS.
 `[auth.rate_limits]` caps how many login attempts each IP can make per minute, how many failed attempts a specific username can accrue, how many registrations are allowed per minute from the same IP, and how often refresh tokens may be exchanged. Setting any of the limits (or the corresponding optional `*_window_seconds` overrides) to `0` disables that particular throttle.
+
+### Email Verification and Password Recovery
+
+PlayPalace can verify new accounts and recover forgotten passwords by email. Configure a secure SMTP relay in `server/config.toml`:
+
+```toml
+[smtp]
+host = "smtp.example.com"
+port = 587                    # 587 for STARTTLS, 465 for implicit TLS
+security = "starttls"         # "starttls" or "ssl"
+from_address = "PlayPalace <no-reply@example.com>"
+username = "smtp-user"
+password = "smtp-password"
+timeout_seconds = 15
+```
+
+STARTTLS and implicit TLS use the system CA store with hostname verification enabled. Plaintext SMTP is rejected unless `allow_plaintext = true` is set explicitly, and should only be used against a local development relay. Keep real SMTP credentials out of version control; prefer an environment-managed config file or a provider-specific app password.
+
+Set a stable `[auth].email_token_secret` so outstanding codes survive a server restart. Generate one with:
+
+```bash
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+Codes are stored only as keyed hashes, expire after `email_code_ttl_seconds` (15 minutes by default), are consumed once, and are discarded after `email_code_max_attempts` (5 by default). Login, registration, verification-resend, and password-reset requests are rate limited. The server always replies generically to password-reset requests so it does not reveal whether an account exists.
+
+When SMTP is configured, unknown usernames are no longer registered implicitly on first login: clients must send the `register` packet with an email address, then verify the emailed code before the account can log in. Existing accounts without an email address remain usable, but cannot use email recovery; a server administrator can still reset their password with the CLI:
+
+```bash
+cd server
+uv run python -m server.cli reset-password --username "<name>"
+```
+
+The desktop client exposes **Create Account**, **Forgot Password**, and **Advanced → Verify Account Email** on the login dialog. The web client exposes equivalent Create account and Forgot password controls.
 
 #### Guided Virtual Bots
 
@@ -320,6 +356,15 @@ uv run python -m server.cli list-users
 ```
 
 Look for the `SERVER_OWNER` trust level in the output before exposing the port.
+
+If a user forgets their password, or you need to recover any account (including the owner), set a new one from the server console:
+
+```bash
+cd server
+uv run python -m server.cli reset-password --username <name>
+```
+
+The command prompts for the new password (or accepts `--password-file/--password-stdin`), revokes the account's refresh tokens, and prints a confirmation. Use `uv run python -m server.cli list-users` to see accounts and trust levels if you need to look up a username. Both commands target `var/server/playpalace.db` by default; pass `--db-path` for a custom database.
 
 When the server starts and finds zero users, it now prints a warning reminding you to run the bootstrap command. Automated test environments can silence the message by setting `PLAYPALACE_SUPPRESS_BOOTSTRAP_WARNING=1`, but this is not recommended for real deployments.
 

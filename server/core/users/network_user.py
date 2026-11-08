@@ -322,6 +322,7 @@ class NetworkUser(User):
         *,
         multiline: bool = False,
         read_only: bool = False,
+        password: bool = False,
         content_format: str = "text",
     ) -> None:
         """Show a text input prompt on the client."""
@@ -330,6 +331,7 @@ class NetworkUser(User):
             "default_value": default_value,
             "multiline": multiline,
             "read_only": read_only,
+            "password": password,
             "content_format": content_format,
         }
         packet: dict[str, Any] = {
@@ -340,6 +342,8 @@ class NetworkUser(User):
             "multiline": multiline,
             "read_only": read_only,
         }
+        if password:
+            packet["password"] = True
         if content_format != "text":
             packet["content_format"] = content_format
         self._queue_packet(packet)

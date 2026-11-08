@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -178,25 +179,42 @@ async def test_register_requires_username_and_password(server):
     await server._handle_register(client, {"username": "", "password": ""})
 
     assert len(client.sent) == 1
-    assert client.sent[0]["type"] == "speak"
-    assert "Username" in client.sent[0]["text"] and str(server._username_min_length) in client.sent[0]["text"]
+    assert client.sent[0]["type"] == "registration_error"
+    assert "Username" in client.sent[0]["message"] and str(server._username_min_length) in client.sent[0]["message"]
 
 
 @pytest.mark.asyncio
-async def test_register_success_notifies_admins(server):
+async def test_register_sends_verification_email(server):
     server._db = SimpleNamespace(get_user_count=lambda: 3)
     auth = DummyAuth(register_result=True)
     server._auth = auth
-    notifications = []
-    server._notify_admins = lambda msg, sound: notifications.append((msg, sound))
+    server._email_tokens = SimpleNamespace(
+        issue=lambda username, purpose: ("CODE123456", int(time.time()) + 900)
+    )
+    sent_emails = []
+
+    async def fake_verification_email(email, username, code, expires_minutes):
+        sent_emails.append((email, username, code, expires_minutes))
+
+    server._email_service = SimpleNamespace(
+        send_verification_code=fake_verification_email,
+    )
 
     client = DummyClient()
-    await server._handle_register(client, {"username": "fresh", "password": "validpass"})
+    await server._handle_register(
+        client,
+        {
+            "username": "fresh",
+            "password": "validpass",
+            "email": "Fresh@Example.com",
+        },
+    )
 
-    assert client.sent[-1]["type"] == "speak"
-    assert "Registration" in client.sent[-1]["text"] or "approval" in client.sent[-1]["text"]
+    assert client.sent[-1]["type"] == "registration_pending"
+    assert client.sent[-1]["email"] == "fresh@example.com"
+    assert client.sent[-1]["email_sent"] is True
     assert auth.calls["register"] == [("fresh", "validpass")]
-    assert notifications == [("account-request", "accountrequest.ogg")]
+    assert sent_emails and sent_emails[0][:3] == ("fresh@example.com", "fresh", "CODE123456")
 
 
 @pytest.mark.asyncio
@@ -204,12 +222,25 @@ async def test_register_rejects_duplicate_username(server):
     server._db = SimpleNamespace(get_user_count=lambda: 0)
     auth = DummyAuth(register_result=False)
     server._auth = auth
+    server._email_tokens = SimpleNamespace(
+        issue=lambda username, purpose: ("CODE123456", int(time.time()) + 900)
+    )
+
+    async def fake_verification_email(email, username, code, expires_minutes):
+        return None
+
+    server._email_service = SimpleNamespace(
+        send_verification_code=fake_verification_email,
+    )
 
     client = DummyClient()
-    await server._handle_register(client, {"username": "taken", "password": "validpass"})
+    await server._handle_register(
+        client,
+        {"username": "taken", "password": "validpass", "email": "taken@example.com"},
+    )
 
-    assert client.sent[-1]["type"] == "speak"
-    assert "already taken" in client.sent[-1]["text"] or "Username" in client.sent[-1]["text"]
+    assert client.sent[-1]["type"] == "registration_error"
+    assert "already taken" in client.sent[-1]["message"] or "Username" in client.sent[-1]["message"]
     assert auth.calls["register"] == [("taken", "validpass")]
 
 
@@ -368,7 +399,7 @@ async def test_register_rejects_invalid_lengths(server):
     await server._handle_register(client, {"username": "aa", "password": "pw"})
 
     assert server._auth.calls["register"] == []
-    assert "Username" in client.sent[-1]["text"] and str(server._username_min_length) in client.sent[-1]["text"]
+    assert "Username" in client.sent[-1]["message"] and str(server._username_min_length) in client.sent[-1]["message"]
 
 
 @pytest.mark.asyncio
@@ -409,11 +440,26 @@ async def test_registration_rate_limit_by_ip(server):
     server._registration_ip_limit = 1
     client = DummyClient()
 
-    await server._handle_register(client, {"username": "first", "password": "validpass"})
-    client.sent.clear()
-    await server._handle_register(client, {"username": "second", "password": "validpass"})
+    server._email_tokens = SimpleNamespace(
+        issue=lambda username, purpose: ("CODE123456", int(time.time()) + 900)
+    )
 
-    assert "Too many registration attempts" in client.sent[-1]["text"]
+    async def fake_verification_email(email, username, code, expires_minutes):
+        return None
+
+    server._email_service = SimpleNamespace(
+        send_verification_code=fake_verification_email,
+    )
+
+    await server._handle_register(
+        client, {"username": "first", "password": "validpass", "email": "first@example.com"}
+    )
+    client.sent.clear()
+    await server._handle_register(
+        client, {"username": "second", "password": "validpass", "email": "second@example.com"}
+    )
+
+    assert "Too many registration attempts" in client.sent[-1]["message"]
 
 
 @pytest.mark.asyncio

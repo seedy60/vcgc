@@ -16,6 +16,17 @@ class DummyDB:
         self.preferences_updates: list[tuple[str, str]] = []
         self.locale_updates: list[tuple[str, str]] = []
         self.fluent_languages_updates: list[tuple[str, list[str]]] = []
+        self.password_updates: list[tuple[str, str]] = []
+        self.revoked_tokens: list[tuple[str, int]] = []
+
+    def get_user(self, username: str):
+        return SimpleNamespace(username=username, password_hash="current-hash")
+
+    def update_user_password(self, username: str, password_hash: str) -> None:
+        self.password_updates.append((username, password_hash))
+
+    def revoke_user_refresh_tokens(self, username: str, revoked_at: int) -> None:
+        self.revoked_tokens.append((username, revoked_at))
 
     def update_user_preferences(self, username: str, prefs_json: str) -> None:
         self.preferences_updates.append((username, prefs_json))
@@ -37,6 +48,8 @@ class DummyUser:
         self.menu_id: str | None = None
         self.music_played: list[str] = []
         self.sounds_played: list[str] = []
+        self.editboxes: list[dict] = []
+        self.menu_items: list[str | None] = []
 
         async def _send(payload):
             return None
@@ -49,8 +62,9 @@ class DummyUser:
     def speak(self, text: str, buffer: str = "misc") -> None:
         self.spoken.append((text, {"buffer": buffer}))
 
-    def show_menu(self, menu_id: str, *args, **kwargs) -> None:
+    def show_menu(self, menu_id: str, items: list, **kwargs) -> None:
         self.menu_id = menu_id
+        self.menu_items = [getattr(item, "id", item) for item in items]
 
     def play_music(self, name: str, looping: bool = True) -> None:
         self.music_played.append(name)
@@ -60,6 +74,11 @@ class DummyUser:
 
     def set_locale(self, locale: str) -> None:
         self.locale = locale
+
+    def show_editbox(self, input_id: str, prompt: str, default_value: str = "", **kwargs) -> None:
+        self.editboxes.append(
+            {"input_id": input_id, "prompt": prompt, "default_value": default_value, **kwargs}
+        )
 
 
 @pytest.fixture
@@ -171,6 +190,89 @@ def test_show_language_menu_warmup_in_progress(server, monkeypatch):
 
     assert result is False
     assert user.spoken[-1][0] == "localization-in-progress-try-again"
+
+
+def test_options_menu_includes_change_password_option(server):
+    user = DummyUser("alice")
+
+    server._show_options_menu(user)
+
+    assert user.menu_id == "options_menu"
+    assert "change_password" in user.menu_items
+
+
+def _install_change_password_auth(server, invalidated: list[str]) -> None:
+    valid = {("current-secret", "current-hash"), ("new-secret", "new-hash")}
+    server._auth = SimpleNamespace(
+        verify_password=lambda password, password_hash: (password, password_hash) in valid,
+        hash_password=lambda password: "new-hash" if password == "new-secret" else "other-hash",
+        invalidate_user_sessions=lambda username: invalidated.append(username),
+    )
+
+
+@pytest.mark.asyncio
+async def test_change_password_flow_updates_hash_and_revokes_tokens(server):
+    user = DummyUser("alice")
+    invalidated: list[str] = []
+    _install_change_password_auth(server, invalidated)
+
+    await server._handle_options_selection(user, "change_password")
+    assert user.editboxes[-1]["input_id"] == "change_password_current"
+    assert user.editboxes[-1]["password"] is True
+    assert server._user_states["alice"]["menu"] == "change_password_current_editbox"
+
+    server._handle_change_password_current(user, "current-secret")
+    assert user.editboxes[-1]["input_id"] == "change_password_new"
+    assert user.editboxes[-1]["password"] is True
+
+    server._handle_change_password_new(user, "new-secret")
+    assert user.editboxes[-1]["input_id"] == "change_password_confirm"
+    assert user.editboxes[-1]["password"] is True
+
+    server._handle_change_password_confirm(user, "new-secret", server._user_states["alice"])
+
+    assert server._db.password_updates == [("alice", "new-hash")]
+    assert invalidated == ["alice"]
+    assert server._db.revoked_tokens
+    assert user.spoken[-1][0] == "change-password-success"
+    assert server._user_states["alice"]["menu"] == "options_menu"
+
+
+@pytest.mark.asyncio
+async def test_change_password_rejects_wrong_current_and_mismatch(server):
+    user = DummyUser("alice")
+    invalidated: list[str] = []
+    _install_change_password_auth(server, invalidated)
+
+    await server._handle_options_selection(user, "change_password")
+    server._handle_change_password_current(user, "wrong-password")
+
+    assert user.spoken[-1][0] == "change-password-wrong-current"
+    assert user.editboxes[-1]["input_id"] == "change_password_current"
+
+    server._handle_change_password_current(user, "current-secret")
+    server._handle_change_password_new(user, "new-secret")
+    server._handle_change_password_confirm(user, "not-the-same", server._user_states["alice"])
+
+    assert user.spoken[-1][0] == "change-password-mismatch"
+    assert user.editboxes[-1]["input_id"] == "change_password_confirm"
+    assert server._db.password_updates == []
+
+
+@pytest.mark.asyncio
+async def test_change_password_enforces_length_limits(server):
+    user = DummyUser("alice")
+    invalidated: list[str] = []
+    _install_change_password_auth(server, invalidated)
+    server._password_min_length = 8
+
+    await server._handle_options_selection(user, "change_password")
+    server._handle_change_password_current(user, "current-secret")
+    server._handle_change_password_new(user, "short")
+
+    assert user.spoken[-1][0] == "credential-password-length"
+    assert user.editboxes[-1]["input_id"] == "change_password_new"
+    assert server._db.password_updates == []
 
 
 @pytest.mark.asyncio

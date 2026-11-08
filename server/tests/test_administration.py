@@ -27,6 +27,7 @@ class DummyUser:
         self.spoken = []
         self.sounds = []
         self.menus = []
+        self.editboxes = []
 
     def speak_l(self, message_id: str, **kwargs):
         self.spoken.append((message_id, kwargs))
@@ -36,6 +37,11 @@ class DummyUser:
 
     def show_menu(self, menu_id: str, items: list[MenuItem], **kwargs):
         self.menus.append({"menu_id": menu_id, "items": items, "kwargs": kwargs})
+
+    def show_editbox(self, input_id: str, prompt: str, default_value: str = "", **kwargs):
+        self.editboxes.append(
+            {"input_id": input_id, "prompt": prompt, "default_value": default_value, **kwargs}
+        )
 
 
 class DummyDB:
@@ -232,6 +238,20 @@ def test_show_demote_admin_menu_filters_self_and_empty():
     assert _get_menu_ids(owner_user) == ["demote_eve", "back"]
 
 
+def test_reset_password_editbox_is_masked():
+    host = AdminHost()
+    admin_user = DummyUser("admin", TrustLevel.ADMIN)
+
+    host._show_reset_password_editbox(admin_user, "alice")
+
+    assert admin_user.editboxes[-1]["input_id"] == "reset_user_password"
+    assert admin_user.editboxes[-1]["password"] is True
+    assert host._user_states["admin"] == {
+        "menu": "reset_password_editbox",
+        "target_username": "alice",
+    }
+
+
 def test_show_reset_password_user_menu_handles_empty_and_entries():
     db = DummyDB()
     host = AdminHost(db=db)
@@ -313,6 +333,57 @@ async def test_reset_user_password_updates_auth_and_disconnects_online_user():
     assert target_user.spoken[-1][0] == "your-password-was-reset"
     assert sent[-1]["type"] == "disconnect"
     assert sent[-1]["return_to_login"] is True
+
+
+def test_owner_reset_password_menu_includes_admins():
+    db = DummyDB()
+    db.non_admin_users = ["alice"]
+    db.admin_users = ["admin2"]
+    host = AdminHost(db=db)
+    owner = DummyUser("owner", TrustLevel.SERVER_OWNER)
+
+    host._show_reset_password_user_menu(owner)
+
+    assert owner.menus[-1]["menu_id"] == "reset_password_user_menu"
+    assert _get_menu_ids(owner) == [
+        "reset_password_admin2",
+        "reset_password_alice",
+        "back",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_reset_user_password_blocks_self_and_peers():
+    db = DummyDB()
+    db.admin_users = ["admin", "other"]
+    host = AdminHost(db=db)
+    admin_user = DummyUser("admin", TrustLevel.ADMIN)
+    calls = []
+    host._auth = SimpleNamespace(
+        reset_password=lambda username, password: calls.append((username, password)) or True
+    )
+
+    await host._reset_user_password(admin_user, "other", "new-secret")
+    await host._reset_user_password(admin_user, "admin", "new-secret")
+
+    assert calls == []
+    assert any(message == "reset-user-password-unavailable" for message, _ in admin_user.spoken)
+
+
+@pytest.mark.asyncio
+async def test_owner_can_reset_admin_password():
+    db = DummyDB()
+    db.admin_users = ["other"]
+    host = AdminHost(db=db)
+    owner = DummyUser("owner", TrustLevel.SERVER_OWNER)
+    calls = []
+    host._auth = SimpleNamespace(
+        reset_password=lambda username, password: calls.append((username, password)) or True
+    )
+
+    await host._reset_user_password(owner, "other", "new-secret")
+
+    assert calls == [("other", "new-secret")]
 
 
 @pytest.mark.asyncio

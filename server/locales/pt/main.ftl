@@ -321,3 +321,25 @@ virtual-bots-profiles-line = { $profile } ({ $bot_count } bots) overrides: { $ov
 virtual-bots-profiles-no-overrides = inherits base configuration
 
 localization-in-progress-try-again = A localização está em andamento. Tente novamente em um minuto.
+
+# Self-service password change
+change-password-option = Alterar palavra-passe
+change-password-current-prompt = Introduza a sua palavra-passe atual:
+change-password-new-prompt = Introduza a sua nova palavra-passe ({ $min }-{ $max } caracteres):
+change-password-confirm-prompt = Introduza novamente a sua nova palavra-passe:
+change-password-wrong-current = Essa não é a sua palavra-passe atual. A palavra-passe não foi alterada.
+change-password-mismatch = As palavras-passe não coincidem. Tente novamente.
+change-password-success = A sua palavra-passe foi alterada.
+change-password-cancelled = Alteração da palavra-passe cancelada.
+
+# Account email settings
+email-change-invalid = Enter a valid email address.
+email-change-same = That is already your verified email address.
+email-change-unavailable = Email settings are not available on this server. Contact the server owner.
+email-change-send-failed = The confirmation email could not be sent. Try again later.
+email-change-pending = A confirmation code was sent to { $email }. Your current email stays active until you confirm the change.
+email-change-success = Email address updated.
+email-change-code-invalid = That confirmation code is invalid or expired.
+email-change-code-expired = That confirmation code has expired. Request a new one.
+email-change-code-locked = Too many incorrect attempts. Request a new confirmation code.
+account-settings = Account settings

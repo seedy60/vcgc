@@ -26,14 +26,14 @@ def test_localization_cache_refreshes_on_file_change(tmp_path, monkeypatch):
     _write_locale(locales_dir, "Hi")
     Localization.init(locales_dir)
     assert Localization.get("en", "hello") == "Hi"
-    cache_files = list((cache_dir / "en").glob("*.json"))
+    cache_files = list((cache_dir / "en").glob("*.pkl"))
     assert len(cache_files) == 1
     first_cache = cache_files[0].name
 
     _write_locale(locales_dir, "Hello again")
     Localization.init(locales_dir)
     assert Localization.get("en", "hello") == "Hello again"
-    cache_files = list((cache_dir / "en").glob("*.json"))
+    cache_files = list((cache_dir / "en").glob("*.pkl"))
     assert len(cache_files) == 1
     assert cache_files[0].name != first_cache
 
@@ -49,6 +49,37 @@ def test_localization_cache_can_be_disabled(tmp_path, monkeypatch):
     Localization.get("en", "hello")
 
     assert not cache_dir.exists()
+
+
+def test_localization_cache_avoids_recompilation(tmp_path, monkeypatch):
+    locales_dir = tmp_path / "locales"
+    cache_dir = tmp_path / "cache"
+    monkeypatch.setenv("PLAYPALACE_LOCALE_CACHE_DIR", str(cache_dir))
+    monkeypatch.delenv("PLAYPALACE_DISABLE_LOCALE_CACHE", raising=False)
+
+    locale_dir = locales_dir / "en"
+    locale_dir.mkdir(parents=True, exist_ok=True)
+    (locale_dir / "main.ftl").write_text(
+        "hello = Hi { $name }\n"
+        "count = { $n ->\n"
+        "    [one] one item\n"
+        "   *[other] many items\n"
+        "  }\n",
+        encoding="utf-8",
+    )
+
+    Localization.init(locales_dir)
+    assert Localization.get("en", "hello", name="Ada") == "Hi Ada"
+    assert Localization.get("en", "count", n=2) == "many items"
+
+    def fail_compile(cls, *args, **kwargs):
+        raise AssertionError("expected a locale cache hit, but recompiled")
+
+    monkeypatch.setattr(Localization, "_compile_bundle", classmethod(fail_compile))
+
+    Localization.init(locales_dir)
+    assert Localization.get("en", "hello", name="Ada") == "Hi Ada"
+    assert Localization.get("en", "count", n=1) == "one item"
 
 
 def test_localization_missing_key_falls_back_to_english(tmp_path):

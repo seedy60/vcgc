@@ -208,9 +208,23 @@ class AdministrationMixin:
 
         self._show_user_list_menu(user, "demote_admin_menu", admins, "demote")
 
+    def _get_resettable_users(self, user: NetworkUser) -> list:
+        """Return the accounts this user is allowed to reset.
+
+        Admins can reset regular users; the server owner can also reset other
+        admins. Nobody can reset their own account from this menu.
+        """
+        resettable_users = list(self._db.get_non_admin_users(exclude_banned=True))
+        if user.trust_level == TrustLevel.SERVER_OWNER:
+            resettable_users.extend(self._db.get_admin_users(include_server_owner=False))
+        return sorted(
+            (record for record in resettable_users if record.username != user.username),
+            key=lambda record: record.username.lower(),
+        )
+
     def _show_reset_password_user_menu(self, user: NetworkUser) -> None:
         """Show reset password menu with users admins may reset."""
-        resettable_users = self._db.get_non_admin_users(exclude_banned=True)
+        resettable_users = self._get_resettable_users(user)
 
         if not resettable_users:
             user.speak_l("no-users-to-reset-password", buffer="misc")
@@ -244,6 +258,7 @@ class AdministrationMixin:
             default_value="",
             multiline=False,
             read_only=False,
+            password=True,
         )
         self._user_states[user.username] = {
             "menu": "reset_password_editbox",
@@ -815,7 +830,12 @@ class AdministrationMixin:
     ) -> None:
         """Reset a user's password to an admin-provided temporary value."""
         target_record = self._db.get_user(username)
-        if not target_record or target_record.trust_level.value >= TrustLevel.ADMIN.value:
+        if (
+            not target_record
+            or target_record.username == admin.username
+            or target_record.trust_level.value <= TrustLevel.BANNED.value
+            or target_record.trust_level.value >= admin.trust_level.value
+        ):
             _speak_activity(admin, "reset-user-password-unavailable", player=username)
             self._show_reset_password_user_menu(admin)
             return

@@ -368,3 +368,25 @@ virtual-bots-profiles-line = { $profile } ({ $bot_count } บอต) แทน�
 virtual-bots-profiles-no-overrides = สืบทอดการกำหนดค่าพื้นฐาน
 
 localization-in-progress-try-again = กำลังโหลดการแปลภาษา โปรดลองอีกครั้งในอีกหนึ่งนาที
+
+# Self-service password change
+change-password-option = เปลี่ยนรหัสผ่าน
+change-password-current-prompt = ป้อนรหัสผ่านปัจจุบันของคุณ:
+change-password-new-prompt = ป้อนรหัสผ่านใหม่ของคุณ ({ $min }-{ $max } อักขระ):
+change-password-confirm-prompt = ป้อนรหัสผ่านใหม่อีกครั้ง:
+change-password-wrong-current = นี่ไม่ใช่รหัสผ่านปัจจุบันของคุณ รหัสผ่านยังไม่ถูกเปลี่ยน
+change-password-mismatch = รหัสผ่านไม่ตรงกัน โปรดลองอีกครั้ง
+change-password-success = เปลี่ยนรหัสผ่านของคุณแล้ว
+change-password-cancelled = ยกเลิกการเปลี่ยนรหัสผ่านแล้ว
+
+# Account email settings
+email-change-invalid = Enter a valid email address.
+email-change-same = That is already your verified email address.
+email-change-unavailable = Email settings are not available on this server. Contact the server owner.
+email-change-send-failed = The confirmation email could not be sent. Try again later.
+email-change-pending = A confirmation code was sent to { $email }. Your current email stays active until you confirm the change.
+email-change-success = Email address updated.
+email-change-code-invalid = That confirmation code is invalid or expired.
+email-change-code-expired = That confirmation code has expired. Request a new one.
+email-change-code-locked = Too many incorrect attempts. Request a new confirmation code.
+account-settings = Account settings

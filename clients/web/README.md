@@ -42,3 +42,20 @@ When verifying reconnect behavior, check:
 - manual disconnect does not auto reconnect
 - reconnect stops after 60 seconds and returns to the login dialog
 - reconnect success restores normal in-game state without reopening the login dialog mid-retry
+
+## Browser Tests
+
+Install the test dependency and Chromium once, then run the Playwright suite:
+
+```bash
+cd clients/web
+npm install
+npx playwright install chromium
+npm test
+```
+
+The tests serve this directory locally and mock the WebSocket protocol, covering
+registration, login-time email verification, password reset, account email settings,
+invalid, expired, or locked confirmation codes for reset and email-change flows, and
+resending a code after it expires or locks, completing with the newly issued code,
+and account settings behavior when email delivery is unavailable.

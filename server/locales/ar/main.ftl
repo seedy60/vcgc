@@ -466,3 +466,25 @@ virtual-bots-profiles-line = { $profile } ({ $bot_count } { $bot_count ->
 virtual-bots-profiles-no-overrides = يرث الإعدادات الأساسية
 
 localization-in-progress-try-again = جارٍ إعداد الترجمة. يُرجى المحاولة مرة أخرى بعد دقيقة.
+
+# Self-service password change
+change-password-option = تغيير كلمة المرور
+change-password-current-prompt = أدخل كلمة المرور الحالية:
+change-password-new-prompt = أدخل كلمة المرور الجديدة ({ $min }-{ $max } حرفًا):
+change-password-confirm-prompt = أعد إدخال كلمة المرور الجديدة:
+change-password-wrong-current = كلمة المرور هذه ليست الحالية. لم يتم تغيير كلمة المرور.
+change-password-mismatch = كلمتا المرور غير متطابقتين. حاول مرة أخرى.
+change-password-success = تم تغيير كلمة المرور.
+change-password-cancelled = تم إلغاء تغيير كلمة المرور.
+
+# Account email settings
+email-change-invalid = Enter a valid email address.
+email-change-same = That is already your verified email address.
+email-change-unavailable = Email settings are not available on this server. Contact the server owner.
+email-change-send-failed = The confirmation email could not be sent. Try again later.
+email-change-pending = A confirmation code was sent to { $email }. Your current email stays active until you confirm the change.
+email-change-success = Email address updated.
+email-change-code-invalid = That confirmation code is invalid or expired.
+email-change-code-expired = That confirmation code has expired. Request a new one.
+email-change-code-locked = Too many incorrect attempts. Request a new confirmation code.
+account-settings = Account settings

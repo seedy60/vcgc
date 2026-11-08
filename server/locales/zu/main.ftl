@@ -380,3 +380,25 @@ virtual-bots-profiles-line = { $profile } (ama-bots angu-{ $bot_count }) kweqiwe
 virtual-bots-profiles-no-overrides = idla ifa ukucushwa okuyisisekelo
 
 localization-in-progress-try-again = Ukuhumusha kusaqhubeka. Sicela uzame futhi emzuzwini.
+
+# Self-service password change
+change-password-option = Shintsha iphasiwedi
+change-password-current-prompt = Faka iphasiwedi yakho yamanje:
+change-password-new-prompt = Faka iphasiwedi yakho entsha ({ $min }-{ $max } izinhlamvu):
+change-password-confirm-prompt = Faka futhi iphasiwedi yakho entsha:
+change-password-wrong-current = Lene nayo akuyona iphasiwedi yakho yamanje. Iphasiwedi ayishintshwanga.
+change-password-mismatch = Amaphasiwedi awafani. Zama futhi.
+change-password-success = Iphasiwedi yakho ishintshiwe.
+change-password-cancelled = Ukushintshwa kwephasiwedi kukhanseliwe.
+
+# Account email settings
+email-change-invalid = Enter a valid email address.
+email-change-same = That is already your verified email address.
+email-change-unavailable = Email settings are not available on this server. Contact the server owner.
+email-change-send-failed = The confirmation email could not be sent. Try again later.
+email-change-pending = A confirmation code was sent to { $email }. Your current email stays active until you confirm the change.
+email-change-success = Email address updated.
+email-change-code-invalid = That confirmation code is invalid or expired.
+email-change-code-expired = That confirmation code has expired. Request a new one.
+email-change-code-locked = Too many incorrect attempts. Request a new confirmation code.
+account-settings = Account settings

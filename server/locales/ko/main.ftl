@@ -368,3 +368,25 @@ virtual-bots-profiles-line = { $profile } ({ $bot_count }개 봇) 재정의: { $
 virtual-bots-profiles-no-overrides = 기본 구성 상속
 
 localization-in-progress-try-again = 현지화 작업이 진행 중입니다. 1분 후에 다시 시도해 주세요.
+
+# Self-service password change
+change-password-option = 비밀번호 변경
+change-password-current-prompt = 현재 비밀번호를 입력하세요:
+change-password-new-prompt = 새 비밀번호를 입력하세요 ({ $min }~{ $max }자):
+change-password-confirm-prompt = 새 비밀번호를 다시 입력하세요:
+change-password-wrong-current = 현재 비밀번호가 아닙니다. 비밀번호가 변경되지 않았습니다.
+change-password-mismatch = 비밀번호가 일치하지 않습니다. 다시 시도하세요.
+change-password-success = 비밀번호가 변경되었습니다.
+change-password-cancelled = 비밀번호 변경이 취소되었습니다.
+
+# Account email settings
+email-change-invalid = Enter a valid email address.
+email-change-same = That is already your verified email address.
+email-change-unavailable = Email settings are not available on this server. Contact the server owner.
+email-change-send-failed = The confirmation email could not be sent. Try again later.
+email-change-pending = A confirmation code was sent to { $email }. Your current email stays active until you confirm the change.
+email-change-success = Email address updated.
+email-change-code-invalid = That confirmation code is invalid or expired.
+email-change-code-expired = That confirmation code has expired. Request a new one.
+email-change-code-locked = Too many incorrect attempts. Request a new confirmation code.
+account-settings = Account settings

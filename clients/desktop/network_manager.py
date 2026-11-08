@@ -9,7 +9,7 @@ import hashlib
 import os
 import tempfile
 import time
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 import wx
 import websockets
@@ -21,6 +21,25 @@ from certificate_prompt import CertificatePromptDialog, CertificateInfo
 from packet_validator import validate_incoming, validate_outgoing
 
 LOG = logging.getLogger(__name__)
+
+
+def _prefer_ipv4_loopback_url(server_url: str) -> str:
+    """Use IPv4 for insecure localhost URLs when possible.
+
+    On Windows, ``localhost`` often resolves to ``::1`` first. A server bound
+    to ``0.0.0.0`` refuses that connection only after a multi-second timeout,
+    so the client appears slow even though the server is local. ``wss://`` is
+    left untouched because TLS certificate validation depends on the hostname.
+    """
+    parsed = urlparse(server_url)
+    hostname = (parsed.hostname or "").rstrip(".").lower()
+    if parsed.scheme != "ws" or hostname != "localhost":
+        return server_url
+
+    netloc = "127.0.0.1"
+    if parsed.port is not None:
+        netloc = f"{netloc}:{parsed.port}"
+    return urlunparse(parsed._replace(netloc=netloc))
 
 
 class TLSUserDeclinedError(Exception):
@@ -261,6 +280,13 @@ class NetworkManager:
     async def _open_connection(self, server_url: str):
         """Open a websocket connection, handling TLS verification."""
         if not server_url.startswith("wss://"):
+            preferred_url = _prefer_ipv4_loopback_url(server_url)
+            if preferred_url != server_url:
+                try:
+                    return await connect(preferred_url)
+                except OSError:
+                    # Preserve support for IPv6-only local servers.
+                    pass
             return await connect(server_url)
 
         try:
@@ -613,9 +639,15 @@ _PACKET_DISPATCH = {
     "clear_ui": lambda window, pkt: window.on_server_clear_ui(pkt),
     "game_list": lambda window, pkt: window.on_server_game_list(pkt),
     "disconnect": lambda window, pkt: window.on_server_disconnect(pkt),
+    "registration_required": lambda window, pkt: window.on_registration_required(pkt),
+    "email_verification_required": lambda window, pkt: window.on_email_verification_required(pkt),
     "update_options_lists": lambda window, pkt: window.on_update_options_lists(pkt),
     "open_client_options": lambda window, pkt: window.on_open_client_options(pkt),
     "open_server_options": lambda window, pkt: window.on_open_server_options(pkt),
+    "open_account_settings": lambda window, pkt: window.on_open_account_settings(pkt),
+    "email_change_pending": lambda window, pkt: window.on_email_change_pending(pkt),
+    "email_change_complete": lambda window, pkt: window.on_email_change_complete(pkt),
+    "email_change_failed": lambda window, pkt: window.on_email_change_failed(pkt),
     "table_create": lambda window, pkt: window.on_table_create(pkt),
     "pong": lambda window, pkt: window.on_server_pong(pkt),
     "chat": lambda window, pkt: window.on_receive_chat(pkt),

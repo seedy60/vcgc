@@ -380,3 +380,25 @@ virtual-bots-profiles-line = { $profile } ({ $bot_count } bots) overschrijvingen
 virtual-bots-profiles-no-overrides = erft basisconfiguratie
 
 localization-in-progress-try-again = Lokalisatie is bezig. Probeer het over een minuut opnieuw.
+
+# Self-service password change
+change-password-option = Wachtwoord wijzigen
+change-password-current-prompt = Voer uw huidige wachtwoord in:
+change-password-new-prompt = Voer uw nieuwe wachtwoord in ({ $min }-{ $max } tekens):
+change-password-confirm-prompt = Voer uw nieuwe wachtwoord opnieuw in:
+change-password-wrong-current = Dat is niet uw huidige wachtwoord. Het wachtwoord is niet gewijzigd.
+change-password-mismatch = De wachtwoorden komen niet overeen. Probeer het opnieuw.
+change-password-success = Uw wachtwoord is gewijzigd.
+change-password-cancelled = Wachtwoordwijziging geannuleerd.
+
+# Account email settings
+email-change-invalid = Enter a valid email address.
+email-change-same = That is already your verified email address.
+email-change-unavailable = Email settings are not available on this server. Contact the server owner.
+email-change-send-failed = The confirmation email could not be sent. Try again later.
+email-change-pending = A confirmation code was sent to { $email }. Your current email stays active until you confirm the change.
+email-change-success = Email address updated.
+email-change-code-invalid = That confirmation code is invalid or expired.
+email-change-code-expired = That confirmation code has expired. Request a new one.
+email-change-code-locked = Too many incorrect attempts. Request a new confirmation code.
+account-settings = Account settings

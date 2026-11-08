@@ -17,6 +17,12 @@ from ui.config_sharing import (
     try_load_export_file,
     format_export_timestamp,
 )
+from ui.auth_dialogs import (
+    EmailVerificationDialog,
+    PasswordRecoveryDialog as SmtpPasswordRecoveryDialog,
+    RegistrationDialog,
+    build_ssl_context,
+)
 
 
 class LoginDialog(wx.Dialog):
@@ -74,7 +80,10 @@ class LoginDialog(wx.Dialog):
         add_sizer.Add(self.add_server_btn, 0, wx.RIGHT, 5)
 
         self.add_account_btn = wx.Button(self.panel, label="Add Acco&unt")
-        add_sizer.Add(self.add_account_btn, 0)
+        add_sizer.Add(self.add_account_btn, 0, wx.RIGHT, 5)
+
+        self.create_account_btn = wx.Button(self.panel, label="Create &Account...")
+        add_sizer.Add(self.create_account_btn, 0)
 
         sizer.Add(add_sizer, 0, wx.LEFT | wx.RIGHT | wx.TOP, 10)
 
@@ -97,6 +106,9 @@ class LoginDialog(wx.Dialog):
         self.login_btn.SetDefault()
         action_sizer.Add(self.login_btn, 0, wx.RIGHT, 5)
 
+        self.forgot_password_btn = wx.Button(self.panel, label="&Forgot Password...")
+        action_sizer.Add(self.forgot_password_btn, 0, wx.RIGHT, 5)
+
         cancel_btn = wx.Button(self.panel, wx.ID_CANCEL, "&Cancel")
         action_sizer.Add(cancel_btn, 0)
 
@@ -110,10 +122,12 @@ class LoginDialog(wx.Dialog):
         self.tree.Bind(wx.EVT_TREE_ITEM_ACTIVATED, self._on_tree_item_activated)
         self.add_server_btn.Bind(wx.EVT_BUTTON, self.on_add_server)
         self.add_account_btn.Bind(wx.EVT_BUTTON, self.on_add_account)
+        self.create_account_btn.Bind(wx.EVT_BUTTON, self.on_create_account)
         self.edit_btn.Bind(wx.EVT_BUTTON, self.on_edit)
         self.delete_btn.Bind(wx.EVT_BUTTON, self.on_delete)
         self.advanced_btn.Bind(wx.EVT_BUTTON, self.on_advanced)
         self.login_btn.Bind(wx.EVT_BUTTON, self.on_login)
+        self.forgot_password_btn.Bind(wx.EVT_BUTTON, self.on_forgot_password)
         cancel_btn.Bind(wx.EVT_BUTTON, self.on_cancel)
 
         # Populate tree
@@ -259,6 +273,7 @@ class LoginDialog(wx.Dialog):
             self.edit_btn.Enable(True)
             self.delete_btn.Enable(True)
             self.add_account_btn.Enable(True)
+            self.create_account_btn.Enable(True)
             self.login_btn.Enable(False)
         elif item_type == "account":
             self._set_label(self.edit_btn, "&Edit Account")
@@ -267,6 +282,7 @@ class LoginDialog(wx.Dialog):
             self.edit_btn.Enable(True)
             self.delete_btn.Enable(True)
             self.add_account_btn.Enable(True)
+            self.create_account_btn.Enable(True)
             self.login_btn.Enable(True)
         else:
             self._set_label(self.edit_btn, "&Edit")
@@ -275,6 +291,7 @@ class LoginDialog(wx.Dialog):
             self.edit_btn.Enable(False)
             self.delete_btn.Enable(False)
             self.add_account_btn.Enable(False)
+            self.create_account_btn.Enable(False)
             self.login_btn.Enable(False)
 
     @staticmethod
@@ -423,14 +440,19 @@ class LoginDialog(wx.Dialog):
         menu = wx.Menu()
         import_id = wx.NewIdRef()
         export_id = wx.NewIdRef()
+        verify_id = wx.NewIdRef()
         options_id = wx.NewIdRef()
 
+        item_type, _server_id, _account_id = self._get_selected_item_data()
         menu.Append(import_id, "&Import Server Profiles")
         menu.Append(export_id, "E&xport Server Profiles")
+        menu.Append(verify_id, "&Verify Account Email...")
         menu.Append(options_id, "Default &Options Profile")
+        menu.Enable(verify_id, item_type == "account")
 
         menu.Bind(wx.EVT_MENU, self._on_import_profiles, id=import_id)
         menu.Bind(wx.EVT_MENU, self._on_export_profiles, id=export_id)
+        menu.Bind(wx.EVT_MENU, self._on_verify_email, id=verify_id)
         menu.Bind(wx.EVT_MENU, self._on_default_options_profile, id=options_id)
 
         self.PopupMenu(menu)
@@ -547,6 +569,136 @@ class LoginDialog(wx.Dialog):
             if result == wx.YES:
                 return data
             # If No, return to file browser
+
+    def on_create_account(self, event):
+        """Create an account on the selected server and verify its email."""
+        server_id = self._get_server_id_for_selection()
+        if not server_id:
+            wx.MessageBox(
+                "Please select a server first.",
+                "No Server Selected",
+                wx.OK | wx.ICON_WARNING,
+            )
+            return
+        server_url = self.config_manager.get_server_url(server_id)
+        if not server_url:
+            wx.MessageBox(
+                "This server has no address configured.",
+                "Create Account",
+                wx.OK | wx.ICON_ERROR,
+            )
+            return
+        server_name = self._get_server_name_for_selection()
+        dlg = RegistrationDialog(
+            self,
+            server_url=server_url,
+            server_name=server_name,
+            ssl_context=build_ssl_context(self.config_manager, server_id),
+        )
+        if dlg.ShowModal() == wx.ID_OK:
+            account = dlg.get_account()
+            account_id = self.config_manager.add_account(
+                server_id,
+                account["username"],
+                account["password"],
+                email=account.get("email", ""),
+            )
+            dlg.Destroy()
+            if account_id:
+                self._populate_tree(
+                    select_server_id=server_id, select_account_id=account_id
+                )
+                wx.MessageBox(
+                    "Account created and email verified. You can now log in.",
+                    "Create Account",
+                    wx.OK | wx.ICON_INFORMATION,
+                )
+            else:
+                wx.MessageBox(
+                    "The account was verified, but the local profile could not be saved.",
+                    "Create Account",
+                    wx.OK | wx.ICON_WARNING,
+                )
+        else:
+            dlg.Destroy()
+        self.tree.SetFocus()
+
+    def _on_verify_email(self, event):
+        """Verify the selected account's email address."""
+        item_type, server_id, account_id = self._get_selected_item_data()
+        if item_type != "account" or not server_id or not account_id:
+            return
+        account = self.config_manager.get_account_by_id(server_id, account_id)
+        if not account:
+            return
+        username = account.get("username", "")
+        if not username:
+            return
+        if not account.get("email"):
+            wx.MessageBox(
+                "This local account has no email address. Add one with Edit Account first.",
+                "Verify Email",
+                wx.OK | wx.ICON_INFORMATION,
+            )
+            return
+        server_url = self.config_manager.get_server_url(server_id)
+        dlg = EmailVerificationDialog(
+            self,
+            server_url=server_url or "",
+            username=username,
+            server_name=self._get_server_name_for_selection(),
+            ssl_context=build_ssl_context(self.config_manager, server_id),
+        )
+        dlg.ShowModal()
+        dlg.Destroy()
+        self.tree.SetFocus()
+
+    def on_forgot_password(self, event):
+        """Request an emailed reset code for the selected account."""
+        item_type, server_id, account_id = self._get_selected_item_data()
+        if not server_id:
+            wx.MessageBox(
+                "Please select a server first.",
+                "Password Recovery",
+                wx.OK | wx.ICON_WARNING,
+            )
+            return
+        username = ""
+        account = None
+        if item_type == "account" and account_id:
+            account = self.config_manager.get_account_by_id(server_id, account_id)
+            if account:
+                username = account.get("username", "")
+        server_url = self.config_manager.get_server_url(server_id)
+        if not server_url:
+            wx.MessageBox(
+                "This server has no address configured.",
+                "Password Recovery",
+                wx.OK | wx.ICON_ERROR,
+            )
+            return
+        dlg = SmtpPasswordRecoveryDialog(
+            self,
+            server_url=server_url,
+            username=username,
+            server_name=self._get_server_name_for_selection(),
+            ssl_context=build_ssl_context(self.config_manager, server_id),
+        )
+        if dlg.ShowModal() == wx.ID_OK and account and account_id:
+            if dlg.reset_username.lower() == account.get("username", "").lower():
+                self.config_manager.update_account(
+                    server_id, account_id, password=dlg.new_password
+                )
+                self._populate_tree(
+                    select_server_id=server_id, select_account_id=account_id
+                )
+                wx.MessageBox(
+                    "Password reset. The saved password for this account has been updated.",
+                    "Password Recovery",
+                    wx.OK | wx.ICON_INFORMATION,
+                )
+        dlg.Destroy()
+        self.tree.SetFocus()
 
     def on_login(self, event):
         """Handle login button click or account activation."""

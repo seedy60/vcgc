@@ -12,12 +12,35 @@ username_max_length = 32
 password_min_length = 8
 password_max_length = 128
 refresh_token_ttl_seconds = 2592000
+# Lifetime and attempt limit for emailed verification/reset codes.
+email_code_ttl_seconds = 900
+email_code_max_attempts = 5
+# Recommended for production so pending codes survive a server restart.
+# Generate with: python -c "import secrets; print(secrets.token_hex(32))"
+# email_token_secret = ""
 [auth.rate_limits]
 login_per_minute = 5
 login_failures_per_minute = 3
 registration_per_minute = 2
+verification_per_minute = 5
+password_reset_per_minute = 3
+password_reset_per_user_per_minute = 1
 refresh_per_minute = 10
 refresh_window_seconds = 60
+
+# Secure SMTP for account verification and password recovery.
+# Use STARTTLS (usually port 587) or implicit TLS (usually port 465).
+# Certificate verification is always enabled. Plaintext SMTP is only allowed
+# for local development with allow_plaintext = true.
+# [smtp]
+# host = "smtp.example.com"
+# port = 587
+# security = "starttls"  # starttls or ssl
+# from_address = "PlayPalace <no-reply@example.com>"
+# username = "smtp-user"
+# password = "smtp-password"
+# timeout_seconds = 15
+# allow_plaintext = false
 
 [network]
 # Maximum bytes accepted per websocket message (maps to websockets' max_size)

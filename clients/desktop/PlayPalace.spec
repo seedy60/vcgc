@@ -1,5 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+
 a = Analysis(
     ['client.py'],
     pathex=[],
@@ -40,10 +41,4 @@ coll = COLLECT(
     upx=True,
     upx_exclude=[],
     name='PlayPalace',
-)
-app = BUNDLE(
-    coll,
-    name='PlayPalace.app',
-    icon=None,
-    bundle_identifier=None,
 )

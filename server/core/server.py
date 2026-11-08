@@ -5,6 +5,8 @@ import contextlib
 from contextlib import asynccontextmanager
 import logging
 import os
+import re
+import secrets
 import shutil
 import sys
 import threading
@@ -38,6 +40,8 @@ from .virtual_bots import VirtualBotManager
 from ..network.websocket_server import WebSocketServer, ClientConnection
 from ..persistence.database import Database
 from ..auth.auth import AuthManager, AuthResult
+from ..auth.email_tokens import EmailTokenService
+from ..mail.smtp import EmailService
 from .tables.manager import TableManager
 from .users.network_user import NetworkUser
 from .users.base import MenuItem, EscapeBehavior, TrustLevel
@@ -68,6 +72,17 @@ REGISTRATION_RATE_WINDOW_SECONDS = 60
 REFRESH_RATE_WINDOW_SECONDS = 60
 DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 60 * 60
 DEFAULT_REFRESH_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60
+DEFAULT_EMAIL_CODE_TTL_SECONDS = 15 * 60
+DEFAULT_EMAIL_CODE_MAX_ATTEMPTS = 5
+DEFAULT_VERIFICATION_ATTEMPTS_PER_MINUTE = 5
+DEFAULT_PASSWORD_RESET_ATTEMPTS_PER_MINUTE = 3
+DEFAULT_PASSWORD_RESET_USER_ATTEMPTS_PER_MINUTE = 1
+EMAIL_RATE_WINDOW_SECONDS = 60
+EMAIL_ADDRESS_PATTERN = re.compile(
+    r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@"
+    r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+    r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$"
+)
 
 STARTUP_GATE_ID = "startup"
 LOCALIZATION_GATE_ID = "localization"
@@ -184,6 +199,14 @@ class Server(AdministrationMixin, DocumentBrowsingMixin, TranscriberRoleMixin):
         self._refresh_ip_limit = DEFAULT_REFRESH_ATTEMPTS_PER_MINUTE
         self._access_token_ttl_seconds = DEFAULT_ACCESS_TOKEN_TTL_SECONDS
         self._refresh_token_ttl_seconds = DEFAULT_REFRESH_TOKEN_TTL_SECONDS
+        self._email_service: EmailService | None = None
+        self._email_tokens: EmailTokenService | None = None
+        self._email_code_ttl_seconds = DEFAULT_EMAIL_CODE_TTL_SECONDS
+        self._email_code_max_attempts = DEFAULT_EMAIL_CODE_MAX_ATTEMPTS
+        self._email_token_secret = ""
+        self._verification_ip_limit = DEFAULT_VERIFICATION_ATTEMPTS_PER_MINUTE
+        self._password_reset_ip_limit = DEFAULT_PASSWORD_RESET_ATTEMPTS_PER_MINUTE
+        self._password_reset_user_limit = DEFAULT_PASSWORD_RESET_USER_ATTEMPTS_PER_MINUTE
         self._login_ip_window = LOGIN_RATE_WINDOW_SECONDS
         self._login_user_window = LOGIN_RATE_WINDOW_SECONDS
         self._registration_ip_window = REGISTRATION_RATE_WINDOW_SECONDS
@@ -192,6 +215,9 @@ class Server(AdministrationMixin, DocumentBrowsingMixin, TranscriberRoleMixin):
         self._login_attempts_user: dict[str, deque[float]] = {}
         self._registration_attempts_ip: dict[str, deque[float]] = {}
         self._refresh_attempts_ip: dict[str, deque[float]] = {}
+        self._verification_attempts_ip: dict[str, deque[float]] = {}
+        self._password_reset_attempts_ip: dict[str, deque[float]] = {}
+        self._password_reset_attempts_user: dict[str, deque[float]] = {}
         self._lifecycle = ServerLifecycleState()
         self._lifecycle.add_gate(STARTUP_GATE_ID, message="Server is starting up.")
         self._localization_gate_registered = False
@@ -238,6 +264,24 @@ class Server(AdministrationMixin, DocumentBrowsingMixin, TranscriberRoleMixin):
         # Connect to database
         self._db.connect()
         self._auth = AuthManager(self._db)
+        if self._email_service is not None:
+            if not self._email_token_secret:
+                self._email_token_secret = secrets.token_hex(32)
+                LOG.warning(
+                    "No [auth].email_token_secret configured; generated a temporary "
+                    "secret. Outstanding email codes will not survive a restart."
+                )
+            self._email_tokens = EmailTokenService(
+                self._db,
+                secret=self._email_token_secret,
+                ttl_seconds=self._email_code_ttl_seconds,
+                max_attempts=self._email_code_max_attempts,
+            )
+        else:
+            LOG.warning(
+                "SMTP is not configured; account registration and email password "
+                "recovery are unavailable. Configure [smtp] in config.toml."
+            )
 
         # Initialize trust levels for users
         promoted_user = self._db.initialize_trust_levels()
@@ -386,12 +430,27 @@ class Server(AdministrationMixin, DocumentBrowsingMixin, TranscriberRoleMixin):
             self._refresh_token_ttl_seconds = _read_limit(
                 auth_cfg, "refresh_token_ttl_seconds", self._refresh_token_ttl_seconds, minimum=60
             )
+            self._email_code_ttl_seconds = _read_limit(
+                auth_cfg, "email_code_ttl_seconds", self._email_code_ttl_seconds, minimum=60
+            )
+            self._email_code_max_attempts = _read_limit(
+                auth_cfg, "email_code_max_attempts", self._email_code_max_attempts, minimum=1
+            )
+            secret = auth_cfg.get("email_token_secret")
+            if isinstance(secret, str) and secret.strip():
+                self._email_token_secret = secret.strip()
 
             # Ensure ranges are sane
             if self._username_min_length > self._username_max_length:
                 self._username_max_length = self._username_min_length
             if self._password_min_length > self._password_max_length:
                 self._password_max_length = self._password_min_length
+
+        try:
+            self._email_service = EmailService.from_config(config.get("smtp"))
+        except ValueError as exc:
+            print(f"ERROR: Invalid [smtp] configuration: {exc}", file=sys.stderr)
+            raise SystemExit(1) from exc
 
         net_cfg = config.get("network")
         if isinstance(net_cfg, dict):
@@ -416,6 +475,18 @@ class Server(AdministrationMixin, DocumentBrowsingMixin, TranscriberRoleMixin):
             )
             self._refresh_ip_limit = _read_limit(
                 rate_cfg, "refresh_per_minute", self._refresh_ip_limit, minimum=0
+            )
+            self._verification_ip_limit = _read_limit(
+                rate_cfg, "verification_per_minute", self._verification_ip_limit, minimum=0
+            )
+            self._password_reset_ip_limit = _read_limit(
+                rate_cfg, "password_reset_per_minute", self._password_reset_ip_limit, minimum=0
+            )
+            self._password_reset_user_limit = _read_limit(
+                rate_cfg,
+                "password_reset_per_user_per_minute",
+                self._password_reset_user_limit,
+                minimum=0,
             )
             self._login_ip_window = _read_limit(
                 rate_cfg, "login_window_seconds", self._login_ip_window, minimum=1
@@ -598,6 +669,43 @@ class Server(AdministrationMixin, DocumentBrowsingMixin, TranscriberRoleMixin):
             return Localization.get(locale, "rate-limit-registration")
         return None
 
+    def _check_verification_rate_limit(self, client_ip: str, *, locale: str) -> str | None:
+        """Check verification resend rate limits."""
+        now = time.monotonic()
+        if not self._allow_attempt(
+            self._verification_attempts_ip,
+            client_ip,
+            self._verification_ip_limit,
+            EMAIL_RATE_WINDOW_SECONDS,
+            now,
+        ):
+            return Localization.get(locale, "rate-limit-verification")
+        return None
+
+    def _check_password_reset_rate_limit(
+        self, client_ip: str, username: str, *, locale: str
+    ) -> str | None:
+        """Check password reset request rate limits by address and account."""
+        now = time.monotonic()
+        if not self._allow_attempt(
+            self._password_reset_attempts_ip,
+            client_ip,
+            self._password_reset_ip_limit,
+            EMAIL_RATE_WINDOW_SECONDS,
+            now,
+        ):
+            return Localization.get(locale, "rate-limit-password-reset")
+        if username and self._password_reset_user_limit > 0:
+            if not self._allow_attempt(
+                self._password_reset_attempts_user,
+                username.lower(),
+                self._password_reset_user_limit,
+                EMAIL_RATE_WINDOW_SECONDS,
+                now,
+            ):
+                return Localization.get(locale, "rate-limit-password-reset")
+        return None
+
     def _check_refresh_rate_limit(self, client_ip: str, *, locale: str) -> str | None:
         """Check refresh token rate limits and return a localized error message if blocked."""
         now = time.monotonic()
@@ -610,6 +718,59 @@ class Server(AdministrationMixin, DocumentBrowsingMixin, TranscriberRoleMixin):
         ):
             return Localization.get(locale, "rate-limit-refresh")
         return None
+
+    @staticmethod
+    def _normalize_email(value: Any) -> str | None:
+        """Validate and normalize an email address, or return None."""
+        if not isinstance(value, str):
+            return None
+        email = value.strip().lower()
+        if not email or len(email) > 254 or "\n" in email or "\r" in email:
+            return None
+        if not EMAIL_ADDRESS_PATTERN.fullmatch(email):
+            return None
+        local, _, domain = email.partition("@")
+        if len(local) > 64 or not domain:
+            return None
+        return email
+
+    @staticmethod
+    def _email_verification_required(user_record: Any) -> bool:
+        """Return True when an account has an unverified email address."""
+        return bool(getattr(user_record, "email", "")) and not bool(
+            getattr(user_record, "email_verified", False)
+        )
+
+    async def _issue_and_send_email_code(
+        self, username: str, email: str, purpose: str
+    ) -> tuple[bool, int]:
+        """Create a code and deliver it, returning (sent, expires_in_seconds)."""
+        if self._email_service is None or self._email_tokens is None:
+            return False, 0
+        if purpose == "change_email":
+            code, expires_at = self._email_tokens.issue(
+                username, purpose, email=email
+            )
+        else:
+            code, expires_at = self._email_tokens.issue(username, purpose)
+        expires_in = max(0, expires_at - int(time.time()))
+        try:
+            if purpose == "verify":
+                await self._email_service.send_verification_code(
+                    email, username, code, max(1, (expires_in + 59) // 60)
+                )
+            elif purpose == "change_email":
+                await self._email_service.send_email_change_code(
+                    email, username, code, max(1, (expires_in + 59) // 60)
+                )
+            else:
+                await self._email_service.send_password_reset_code(
+                    email, username, code, max(1, (expires_in + 59) // 60)
+                )
+        except Exception:
+            LOG.exception("Failed to send %s email for account %s", purpose, username)
+            return False, expires_in
+        return True, expires_in
 
     def _warn_if_no_users(self) -> None:
         """Print a warning if no user accounts exist yet."""
@@ -1044,6 +1205,18 @@ class Server(AdministrationMixin, DocumentBrowsingMixin, TranscriberRoleMixin):
             await self._handle_authorize(client, packet)
         elif packet_type == "register":
             await self._handle_register(client, packet)
+        elif packet_type == "verify_email":
+            await self._handle_verify_email(client, packet)
+        elif packet_type == "resend_verification":
+            await self._handle_resend_verification(client, packet)
+        elif packet_type == "request_password_reset":
+            await self._handle_request_password_reset(client, packet)
+        elif packet_type == "reset_password":
+            await self._handle_reset_password(client, packet)
+        elif packet_type == "request_email_change":
+            await self._handle_request_email_change(client, packet)
+        elif packet_type == "verify_email_change":
+            await self._handle_verify_email_change(client, packet)
         elif packet_type == "refresh_session":
             await self._handle_refresh_session(client, packet)
         elif not client.authenticated:
@@ -1356,6 +1529,19 @@ class Server(AdministrationMixin, DocumentBrowsingMixin, TranscriberRoleMixin):
                     )
                     return
 
+                # With SMTP configured, accounts must be created explicitly so
+                # the registration email can be collected and verified. Servers
+                # without SMTP retain the legacy first-login registration flow.
+                if self._email_service is not None:
+                    await client.send(
+                        {
+                            "type": "registration_required",
+                            "message": Localization.get(locale, "registration-required"),
+                            "email_required": True,
+                        }
+                    )
+                    return
+
                 # User not found - check if this will be a new user that needs approval
                 needs_approval = not self._auto_approve_new_accounts and self._db.get_user_count() > 0
                 # Try to register if accounts are not blocked
@@ -1385,6 +1571,21 @@ class Server(AdministrationMixin, DocumentBrowsingMixin, TranscriberRoleMixin):
                 if needs_approval:
                     self._notify_admins("account-request", "accountrequest.ogg")
 
+        user_record = self._auth.get_user(username)
+        if user_record and self._email_verification_required(user_record):
+            await client.send(
+                {
+                    "type": "email_verification_required",
+                    "username": username,
+                    "message": Localization.get(
+                        locale,
+                        "email-verification-required",
+                        email=user_record.email,
+                    ),
+                }
+            )
+            return
+
         access_token, access_expires = self._auth.create_session(
             username, self._access_token_ttl_seconds
         )
@@ -1412,46 +1613,358 @@ class Server(AdministrationMixin, DocumentBrowsingMixin, TranscriberRoleMixin):
         """
         username_raw = packet.get("username", "")
         password_raw = packet.get("password", "")
-        # email and bio are sent but not stored yet
         locale = packet.get("locale") or self._default_locale
 
         username, password, error = self._validate_credentials(
             username_raw, password_raw, locale=locale
         )
         if error:
-            await client.send({"type": "speak", "text": error, "buffer": "activity"})
+            await client.send({"type": "registration_error", "message": error})
             return
 
         client_ip = self._get_client_ip(client)
         throttle_message = self._check_registration_rate_limit(client_ip, locale=locale)
         if throttle_message:
-            await client.send({"type": "speak", "text": throttle_message, "buffer": "activity"})
+            await client.send({"type": "registration_error", "message": throttle_message})
             return
 
-
-        # All self-registered users require approval.
-        needs_approval = not self._auto_approve_new_accounts and self._db.get_user_count() > 0
-        # Try to register the user
         if self._block_new_accounts:
-            await self._send_accounts_blocked(client, locale)
-            return
-        if self._auth.register(username, password, approved=self._auto_approve_new_accounts, locale=locale):
             await client.send({
-                "type": "speak",
-                "text": Localization.get(locale, "registration-success"),
-                "buffer": "activity",
+                "type": "registration_error",
+                "message": Localization.get(locale, "accounts-blocked"),
             })
-            # Notify admins of new account request (only if user needs approval)
-            if needs_approval:
-                self._notify_admins("account-request", "accountrequest.ogg")
+            return
+
+        raw_email = packet.get("email")
+        email = self._normalize_email(raw_email)
+        if email is None:
+            key = "registration-email-required" if not raw_email else "registration-email-invalid"
+            await client.send({"type": "registration_error", "message": Localization.get(locale, key)})
+            return
+
+        if self._email_service is None or self._email_tokens is None:
+            await client.send({
+                "type": "registration_error",
+                "message": Localization.get(locale, "registration-email-unavailable"),
+            })
+            return
+
+        # Email accounts start unverified. Admin approval is applied after the
+        # address is verified so an unverified account cannot be approved.
+        if not self._auth.register(
+            username,
+            password,
+            approved=False,
+            locale=locale,
+            email=email,
+            email_verified=False,
+        ):
+            await client.send({
+                "type": "registration_error",
+                "message": Localization.get(locale, "registration-username-taken"),
+            })
+            return
+
+        email_sent, expires_in = await self._issue_and_send_email_code(
+            username, email, "verify"
+        )
+        message_key = (
+            "registration-pending" if email_sent else "registration-pending-email-failed"
+        )
+        await client.send({
+            "type": "registration_pending",
+            "username": username,
+            "email": email,
+            "message": Localization.get(locale, message_key, email=email),
+            "email_sent": email_sent,
+            "expires_in": expires_in,
+        })
+
+    async def _handle_verify_email(self, client: ClientConnection, packet: dict) -> None:
+        """Verify an account email using a one-time code."""
+        username = (packet.get("username") or "").strip()
+        code = packet.get("code") or ""
+        locale = packet.get("locale") or self._default_locale
+        if not username or not code or self._email_tokens is None:
+            await client.send({
+                "type": "email_verification_failed",
+                "message": Localization.get(locale, "verification-code-invalid"),
+            })
+            return
+
+        user = self._db.get_user(username)
+        if not user or not user.email:
+            await client.send({
+                "type": "email_verification_failed",
+                "message": Localization.get(locale, "verification-code-invalid"),
+            })
+            return
+
+        if user.email_verified:
+            await client.send({
+                "type": "email_verified",
+                "username": user.username,
+                "approved": bool(user.approved),
+                "message": Localization.get(locale, "email-verification-success"),
+            })
+            return
+
+        result = self._email_tokens.verify(user.username, "verify", code)
+        if not result.ok:
+            await self._send_verification_failure(client, locale, result)
+            return
+
+        self._auth.mark_email_verified(user.username)
+        approved = bool(user.approved)
+        if self._auto_approve_new_accounts and not approved:
+            approved = self._db.approve_user(user.username)
+        if not approved:
+            self._notify_admins("account-request", "accountrequest.ogg")
+        await client.send({
+            "type": "email_verified",
+            "username": user.username,
+            "approved": approved,
+            "message": Localization.get(locale, "email-verification-success"),
+        })
+
+    async def _send_verification_failure(
+        self, client: ClientConnection, locale: str, result: Any
+    ) -> None:
+        """Send a localized verification failure."""
+        if result.reason == "locked":
+            message = Localization.get(locale, "verification-code-locked")
+        elif result.reason == "expired":
+            message = Localization.get(locale, "verification-code-expired")
         else:
-            await client.send(
-                {
-                    "type": "speak",
-                    "text": Localization.get(locale, "registration-username-taken"),
-                    "buffer": "activity",
-                }
-            )
+            message = Localization.get(locale, "verification-code-invalid")
+        await client.send({
+            "type": "email_verification_failed",
+            "message": message,
+            "attempts_remaining": result.attempts_remaining,
+        })
+
+    async def _handle_resend_verification(self, client: ClientConnection, packet: dict) -> None:
+        """Resend a verification code without revealing account existence."""
+        username = (packet.get("username") or "").strip()
+        locale = packet.get("locale") or self._default_locale
+        generic = Localization.get(locale, "verification-resent")
+        client_ip = self._get_client_ip(client)
+        throttle_message = self._check_verification_rate_limit(client_ip, locale=locale)
+        if throttle_message:
+            await client.send({
+                "type": "verification_resent",
+                "message": generic,
+                "email_sent": False,
+            })
+            return
+
+        user = self._db.get_user(username) if username else None
+        if user and user.email and not user.email_verified:
+            await self._issue_and_send_email_code(user.username, user.email, "verify")
+        await client.send({
+            "type": "verification_resent",
+            "message": generic,
+            # Always generic: a false value would reveal whether an unverified
+            # account exists for the supplied username.
+            "email_sent": True,
+        })
+
+    async def _handle_request_password_reset(
+        self, client: ClientConnection, packet: dict
+    ) -> None:
+        """Email a password reset code, always replying generically."""
+        username = (packet.get("username") or "").strip()
+        locale = packet.get("locale") or self._default_locale
+        generic = Localization.get(locale, "password-reset-requested")
+        client_ip = self._get_client_ip(client)
+        throttle_message = self._check_password_reset_rate_limit(
+            client_ip, username, locale=locale
+        )
+        if throttle_message:
+            await client.send({
+                "type": "password_reset_requested",
+                "message": generic,
+            })
+            return
+
+        user = self._db.get_user(username) if username else None
+        if user and user.email and self._email_tokens is not None:
+            await self._issue_and_send_email_code(user.username, user.email, "reset")
+            self._db.delete_expired_email_tokens(int(time.time()))
+        await client.send({"type": "password_reset_requested", "message": generic})
+
+    async def _handle_reset_password(self, client: ClientConnection, packet: dict) -> None:
+        """Reset a password with a one-time emailed code."""
+        username = (packet.get("username") or "").strip()
+        code = packet.get("code") or ""
+        new_password = packet.get("new_password") or ""
+        locale = packet.get("locale") or self._default_locale
+
+        if len(new_password) < self._password_min_length or len(new_password) > self._password_max_length:
+            await client.send({
+                "type": "password_reset_failed",
+                "message": Localization.get(
+                    locale,
+                    "credential-password-length",
+                    min=self._password_min_length,
+                    max=self._password_max_length,
+                ),
+            })
+            return
+
+        if not username or not code or self._email_tokens is None:
+            await client.send({
+                "type": "password_reset_failed",
+                "message": Localization.get(locale, "password-reset-code-invalid"),
+            })
+            return
+
+        user = self._db.get_user(username)
+        if not user or not user.email:
+            await client.send({
+                "type": "password_reset_failed",
+                "message": Localization.get(locale, "password-reset-code-invalid"),
+            })
+            return
+
+        result = self._email_tokens.verify(user.username, "reset", code)
+        if not result.ok:
+            if result.reason == "locked":
+                message = Localization.get(locale, "password-reset-code-locked")
+            elif result.reason == "expired":
+                message = Localization.get(locale, "password-reset-code-expired")
+            else:
+                message = Localization.get(locale, "password-reset-code-invalid")
+            await client.send({
+                "type": "password_reset_failed",
+                "message": message,
+                "attempts_remaining": result.attempts_remaining,
+            })
+            return
+
+        if not self._auth.reset_password(user.username, new_password):
+            await client.send({
+                "type": "password_reset_failed",
+                "message": Localization.get(locale, "password-reset-code-invalid"),
+            })
+            return
+        # Possession of the reset code proves control of the address.
+        self._auth.mark_email_verified(user.username)
+        if self._auto_approve_new_accounts and not user.approved:
+            self._db.approve_user(user.username)
+        self._email_tokens.clear(user.username)
+        await client.send({
+            "type": "password_reset_complete",
+            "message": Localization.get(locale, "password-reset-success"),
+        })
+
+    async def _handle_request_email_change(
+        self, client: ClientConnection, packet: dict
+    ) -> None:
+        """Send a confirmation code for a proposed account email address."""
+        user = self._users.get(client.username) if client.username else None
+        if not user:
+            return
+        locale = user.locale
+        record = self._db.get_user(user.username)
+        if not record:
+            await client.send({
+                "type": "email_change_failed",
+                "message": Localization.get(locale, "email-change-invalid"),
+            })
+            return
+        if self._email_service is None or self._email_tokens is None:
+            await client.send({
+                "type": "email_change_failed",
+                "message": Localization.get(locale, "email-change-unavailable"),
+            })
+            return
+
+        email = self._normalize_email(packet.get("email"))
+        if not email:
+            await client.send({
+                "type": "email_change_failed",
+                "message": Localization.get(locale, "email-change-invalid"),
+            })
+            return
+        if record.email and record.email_verified and email == record.email.lower():
+            await client.send({
+                "type": "email_change_failed",
+                "message": Localization.get(locale, "email-change-same"),
+            })
+            return
+
+        throttle_message = self._check_verification_rate_limit(
+            self._get_client_ip(client), locale=locale
+        )
+        if throttle_message:
+            await client.send({
+                "type": "email_change_failed",
+                "message": throttle_message,
+            })
+            return
+
+        sent, expires_in = await self._issue_and_send_email_code(
+            user.username, email, "change_email"
+        )
+        if not sent:
+            await client.send({
+                "type": "email_change_failed",
+                "message": Localization.get(locale, "email-change-send-failed"),
+            })
+            return
+
+        await client.send({
+            "type": "email_change_pending",
+            "email": email,
+            "message": Localization.get(locale, "email-change-pending", email=email),
+            "expires_in": expires_in,
+        })
+
+    async def _handle_verify_email_change(
+        self, client: ClientConnection, packet: dict
+    ) -> None:
+        """Apply a pending email change after its confirmation code is verified."""
+        user = self._users.get(client.username) if client.username else None
+        if not user:
+            return
+        locale = user.locale
+        code = packet.get("code") or ""
+        if not code or self._email_tokens is None or self._auth is None:
+            await client.send({
+                "type": "email_change_failed",
+                "message": Localization.get(locale, "email-change-code-invalid"),
+            })
+            return
+
+        result = self._email_tokens.verify(user.username, "change_email", code)
+        if not result.ok:
+            if result.reason == "locked":
+                message = Localization.get(locale, "email-change-code-locked")
+            elif result.reason == "expired":
+                message = Localization.get(locale, "email-change-code-expired")
+            else:
+                message = Localization.get(locale, "email-change-code-invalid")
+            await client.send({
+                "type": "email_change_failed",
+                "message": message,
+                "attempts_remaining": result.attempts_remaining,
+            })
+            return
+
+        email = self._normalize_email(result.email)
+        if not email or not self._auth.set_email(user.username, email, verified=True):
+            await client.send({
+                "type": "email_change_failed",
+                "message": Localization.get(locale, "email-change-code-invalid"),
+            })
+            return
+        self._db.delete_email_tokens(user.username, "change_email")
+        await client.send({
+            "type": "email_change_complete",
+            "email": email,
+            "message": Localization.get(locale, "email-change-success"),
+        })
 
     @staticmethod
     async def _send_accounts_blocked(client: ClientConnection, locale: str) -> None:
@@ -1556,6 +2069,10 @@ class Server(AdministrationMixin, DocumentBrowsingMixin, TranscriberRoleMixin):
                 MenuItem(text=Localization.get(user.locale, "saved-tables"), id="saved_tables"),
                 MenuItem(text=Localization.get(user.locale, "leaderboards"), id="leaderboards"),
                 MenuItem(text=Localization.get(user.locale, "my-stats"), id="my_stats"),
+                MenuItem(
+                    text=Localization.get(user.locale, "account-settings"),
+                    id="account_settings",
+                ),
                 MenuItem(text=Localization.get(user.locale, "options"), id="options"),
                 MenuItem(
                     text=Localization.get(user.locale, "documents-menu-title"), id="documents"
@@ -1572,6 +2089,10 @@ class Server(AdministrationMixin, DocumentBrowsingMixin, TranscriberRoleMixin):
             # Limited menu for users waiting for approval
             items = [
                 MenuItem(text=Localization.get(user.locale, "leaderboards"), id="leaderboards"),
+                MenuItem(
+                    text=Localization.get(user.locale, "account-settings"),
+                    id="account_settings",
+                ),
                 MenuItem(text=Localization.get(user.locale, "options"), id="options"),
                 MenuItem(
                     text=Localization.get(user.locale, "documents-menu-title"), id="documents"
@@ -1588,6 +2109,17 @@ class Server(AdministrationMixin, DocumentBrowsingMixin, TranscriberRoleMixin):
         user.play_music("mainmus.ogg")
         user.stop_ambience()
         self._user_states[user.username] = {"menu": "main_menu"}
+
+    def _show_account_settings(self, user: NetworkUser) -> None:
+        """Ask the client to open its account email settings dialog."""
+        record = self._db.get_user(user.username)
+        user.queue_packet({
+            "type": "open_account_settings",
+            "username": user.username,
+            "email": (record.email or "") if record else "",
+            "email_verified": bool(record.email_verified) if record else False,
+            "available": self._email_service is not None and self._email_tokens is not None,
+        })
 
     def _show_categories_menu(self, user: NetworkUser) -> None:
         """Show game categories menu."""
@@ -1760,6 +2292,10 @@ class Server(AdministrationMixin, DocumentBrowsingMixin, TranscriberRoleMixin):
                     count=len(user.fluent_languages),
                 ),
                 id="fluent_languages",
+            ),
+            MenuItem(
+                text=Localization.get(user.locale, "change-password-option"),
+                id="change_password",
             ),
         ]
 
@@ -2359,6 +2895,8 @@ class Server(AdministrationMixin, DocumentBrowsingMixin, TranscriberRoleMixin):
                 return
             if not self._show_my_stats_menu(user):
                 return  # No stats — user stays on main menu
+        elif selection_id == "account_settings":
+            self._show_account_settings(user)
         elif selection_id == "documents":
             self._show_documents_menu(user)
         elif selection_id == "options":
@@ -2379,7 +2917,9 @@ class Server(AdministrationMixin, DocumentBrowsingMixin, TranscriberRoleMixin):
         """Handle logout confirmation menu selection."""
         if selection_id == "yes":
             user.speak_l("goodbye", buffer="activity")
-            await user.connection.send({"type": "disconnect", "reconnect": False})
+            await user.connection.send(
+                {"type": "disconnect", "reconnect": False, "return_to_login": True}
+            )
         else:
             self._show_main_menu(user)
 
@@ -2397,6 +2937,8 @@ class Server(AdministrationMixin, DocumentBrowsingMixin, TranscriberRoleMixin):
                 self._user_states[user.username] = {"menu": "language_menu"}
         elif selection_id == "fluent_languages":
             self._show_fluent_languages_menu(user)
+        elif selection_id == "change_password":
+            self._show_change_password_current_prompt(user)
         elif selection_id.startswith("pref_cat_"):
             category = selection_id[9:]  # Remove "pref_cat_"
             self._show_pref_category_menu(user, category)
@@ -2407,6 +2949,126 @@ class Server(AdministrationMixin, DocumentBrowsingMixin, TranscriberRoleMixin):
             self._show_options_menu(user)
         elif selection_id == "back":
             self._show_main_menu(user)
+
+    def _show_change_password_current_prompt(self, user: NetworkUser) -> None:
+        """Ask for the current password before starting a password change."""
+        user.show_editbox(
+            "change_password_current",
+            Localization.get(user.locale, "change-password-current-prompt"),
+            default_value="",
+            multiline=False,
+            read_only=False,
+            password=True,
+        )
+        self._user_states[user.username] = {"menu": "change_password_current_editbox"}
+
+    def _show_change_password_new_prompt(self, user: NetworkUser) -> None:
+        """Ask for the replacement password."""
+        user.show_editbox(
+            "change_password_new",
+            Localization.get(
+                user.locale,
+                "change-password-new-prompt",
+                min=self._password_min_length,
+                max=self._password_max_length,
+            ),
+            default_value="",
+            multiline=False,
+            read_only=False,
+            password=True,
+        )
+        self._user_states[user.username] = {"menu": "change_password_new_editbox"}
+
+    def _show_change_password_confirm_prompt(
+        self, user: NetworkUser, new_password_hash: str
+    ) -> None:
+        """Ask the user to repeat the replacement password."""
+        user.show_editbox(
+            "change_password_confirm",
+            Localization.get(user.locale, "change-password-confirm-prompt"),
+            default_value="",
+            multiline=False,
+            read_only=False,
+            password=True,
+        )
+        self._user_states[user.username] = {
+            "menu": "change_password_confirm_editbox",
+            "new_password_hash": new_password_hash,
+        }
+
+    def _cancel_change_password(self, user: NetworkUser) -> None:
+        """Abandon the change-password flow and return to options."""
+        user.speak_l("change-password-cancelled", buffer="misc")
+        self._show_options_menu(user)
+
+    def _handle_change_password_current(self, user: NetworkUser, text: str) -> None:
+        """Verify the current password, then ask for the new one."""
+        if not text:
+            self._cancel_change_password(user)
+            return
+
+        record = self._db.get_user(user.username)
+        if (
+            not record
+            or not self._auth
+            or not self._auth.verify_password(text, record.password_hash)
+        ):
+            user.speak_l("change-password-wrong-current", buffer="misc")
+            self._show_change_password_current_prompt(user)
+            return
+
+        self._show_change_password_new_prompt(user)
+
+    def _handle_change_password_new(self, user: NetworkUser, text: str) -> None:
+        """Validate the new password, then ask for confirmation."""
+        if not text:
+            self._cancel_change_password(user)
+            return
+
+        if not (self._password_min_length <= len(text) <= self._password_max_length):
+            user.speak_l(
+                "credential-password-length",
+                buffer="misc",
+                min=self._password_min_length,
+                max=self._password_max_length,
+            )
+            self._show_change_password_new_prompt(user)
+            return
+
+        if not self._auth:
+            user.speak_l("internal-error", buffer="misc")
+            self._show_options_menu(user)
+            return
+
+        # Keep only the hash so the plaintext password never sits in user state.
+        self._show_change_password_confirm_prompt(user, self._auth.hash_password(text))
+
+    def _handle_change_password_confirm(
+        self, user: NetworkUser, text: str, state: dict
+    ) -> None:
+        """Confirm the new password and apply the change."""
+        new_password_hash = state.get("new_password_hash")
+        if not text and new_password_hash:
+            self._cancel_change_password(user)
+            return
+
+        if (
+            not new_password_hash
+            or not self._auth
+            or not self._auth.verify_password(text, new_password_hash)
+        ):
+            user.speak_l("change-password-mismatch", buffer="misc")
+            if new_password_hash:
+                self._show_change_password_confirm_prompt(user, new_password_hash)
+            else:
+                self._show_change_password_current_prompt(user)
+            return
+
+        self._db.update_user_password(user.username, new_password_hash)
+        self._auth.invalidate_user_sessions(user.username)
+        self._db.revoke_user_refresh_tokens(user.username, int(time.time()))
+        user.speak_l("change-password-success", buffer="activity")
+        self._show_options_menu(user)
 
     def _show_fluent_languages_menu(self, user: NetworkUser) -> None:
         """Show fluent languages toggle menu."""
@@ -4179,6 +4841,18 @@ class Server(AdministrationMixin, DocumentBrowsingMixin, TranscriberRoleMixin):
         if current_menu == "reset_password_editbox":
             text = packet.get("text", "")
             await self._handle_reset_password_editbox(user, text, state)
+            return
+
+        if current_menu == "change_password_current_editbox":
+            self._handle_change_password_current(user, packet.get("text", ""))
+            return
+
+        if current_menu == "change_password_new_editbox":
+            self._handle_change_password_new(user, packet.get("text", ""))
+            return
+
+        if current_menu == "change_password_confirm_editbox":
+            self._handle_change_password_confirm(user, packet.get("text", ""), state)
             return
 
         # Forward to game if user is in a table

@@ -24,6 +24,8 @@ class UserRecord:
         trust_level: Trust level for permissions.
         approved: Whether the account is approved.
         fluent_languages: Languages the user knows.
+        email: Verified or pending email address, or empty for legacy accounts.
+        email_verified: Whether the stored email address is verified.
     """
 
     id: int
@@ -35,6 +37,8 @@ class UserRecord:
     trust_level: TrustLevel = TrustLevel.USER
     approved: bool = False  # Whether the account has been approved by an admin
     fluent_languages: list[str] = field(default_factory=list)
+    email: str = ""
+    email_verified: bool = True
 
 
 @dataclass
@@ -79,6 +83,48 @@ class RefreshTokenRecord:
     created_at: int
     revoked_at: int | None = None
     replaced_by: str | None = None
+
+
+@dataclass
+class EmailTokenRecord:
+    """One-time email verification or password reset token.
+
+    Attributes:
+        id: Internal numeric id.
+        username: Account the token belongs to.
+        purpose: ``verify``, ``reset``, or ``change_email``.
+        email: Target email address for a pending email change, else empty.
+        token_hash: Keyed hash of the code; the plaintext is never stored.
+        expires_at: Expiration epoch timestamp.
+        created_at: Creation epoch timestamp.
+        attempts: Number of incorrect attempts so far.
+        used_at: Consumption epoch timestamp, or None if unused.
+    """
+
+    id: int
+    username: str
+    purpose: str
+    token_hash: str
+    expires_at: int
+    created_at: int
+    attempts: int = 0
+    used_at: int | None = None
+    email: str = ""
+
+
+def _email_token_from_row(row: sqlite3.Row) -> EmailTokenRecord:
+    """Build an EmailTokenRecord from a database row."""
+    return EmailTokenRecord(
+        id=row["id"],
+        username=row["username"],
+        purpose=row["purpose"],
+        email=row["email"] or "",
+        token_hash=row["token_hash"],
+        expires_at=row["expires_at"],
+        created_at=row["created_at"],
+        attempts=row["attempts"] or 0,
+        used_at=row["used_at"],
+    )
 
 
 def _token_from_row(row: sqlite3.Row) -> RefreshTokenRecord:
@@ -145,8 +191,29 @@ class Database:
                 preferences_json TEXT DEFAULT '{}',
                 trust_level INTEGER DEFAULT 1,
                 approved INTEGER DEFAULT 0,
-                fluent_languages TEXT DEFAULT '[]'
+                fluent_languages TEXT DEFAULT '[]',
+                email TEXT,
+                email_verified INTEGER DEFAULT 0
             )
+        """)
+
+        # One-time email verification and password reset codes
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS email_tokens (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL,
+                purpose TEXT NOT NULL,
+                email TEXT NOT NULL DEFAULT '',
+                token_hash TEXT NOT NULL,
+                expires_at INTEGER NOT NULL,
+                created_at INTEGER NOT NULL,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                used_at INTEGER
+            )
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_email_tokens_lookup
+            ON email_tokens(username, purpose, id DESC)
         """)
 
         # Transcriber assignments (languages a user is approved to transcribe)
@@ -275,6 +342,22 @@ class Database:
             cursor.execute("UPDATE users SET approved = 1")  # Approve all existing users
             self._get_conn().commit()
 
+        if "email" not in columns:
+            cursor.execute("ALTER TABLE users ADD COLUMN email TEXT")
+            self._get_conn().commit()
+
+        if "email_verified" not in columns:
+            cursor.execute("ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0")
+            self._get_conn().commit()
+
+        cursor.execute("PRAGMA table_info(email_tokens)")
+        email_token_columns = [row[1] for row in cursor.fetchall()]
+        if "email" not in email_token_columns:
+            cursor.execute(
+                "ALTER TABLE email_tokens ADD COLUMN email TEXT NOT NULL DEFAULT ''"
+            )
+            self._get_conn().commit()
+
         # Check game_result_players for is_virtual_bot column
         cursor.execute("PRAGMA table_info(game_result_players)")
         grp_columns = [row[1] for row in cursor.fetchall()]
@@ -349,6 +432,9 @@ class Database:
     def _user_from_row(row: sqlite3.Row) -> UserRecord:
         """Build a UserRecord from a database row."""
         trust_level_int = row["trust_level"] if row["trust_level"] is not None else 1
+        email = row["email"] or ""
+        # Accounts created before email support have no address and remain usable.
+        email_verified = bool(row["email_verified"]) if email else True
         return UserRecord(
             id=row["id"],
             username=row["username"],
@@ -359,9 +445,14 @@ class Database:
             trust_level=TrustLevel(trust_level_int),
             approved=bool(row["approved"]) if row["approved"] is not None else False,
             fluent_languages=json.loads(row["fluent_languages"] or "[]"),
+            email=email,
+            email_verified=email_verified,
         )
 
-    _USER_COLUMNS = "id, username, password_hash, uuid, locale, preferences_json, trust_level, approved, fluent_languages"
+    _USER_COLUMNS = (
+        "id, username, password_hash, uuid, locale, preferences_json, trust_level, "
+        "approved, fluent_languages, email, email_verified"
+    )
 
     def get_user(self, username: str) -> UserRecord | None:
         """Get a user by username."""
@@ -382,6 +473,8 @@ class Database:
         locale: str = "en",
         trust_level: TrustLevel = TrustLevel.USER,
         approved: bool = False,
+        email: str | None = None,
+        email_verified: bool = False,
     ) -> UserRecord:
         """Create a new user with a generated UUID.
 
@@ -391,6 +484,8 @@ class Database:
             locale: Preferred locale.
             trust_level: Initial trust level.
             approved: Whether the account is approved.
+            email: Optional email address. New accounts normally require one.
+            email_verified: Whether the email address is already verified.
 
         Returns:
             Created UserRecord.
@@ -398,10 +493,24 @@ class Database:
         import uuid as uuid_module
 
         user_uuid = str(uuid_module.uuid4())
+        stored_email = (email or "").strip().lower()
+        # Legacy accounts created without an email never need verification.
+        verified = bool(email_verified) or not stored_email
         cursor = self._get_conn().cursor()
         cursor.execute(
-            "INSERT INTO users (username, password_hash, uuid, locale, trust_level, approved) VALUES (?, ?, ?, ?, ?, ?)",
-            (username, password_hash, user_uuid, locale, trust_level.value, 1 if approved else 0),
+            "INSERT INTO users ("
+            "username, password_hash, uuid, locale, trust_level, approved, email, email_verified"
+            ") VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                username,
+                password_hash,
+                user_uuid,
+                locale,
+                trust_level.value,
+                1 if approved else 0,
+                stored_email or None,
+                1 if verified else 0,
+            ),
         )
         self._get_conn().commit()
         return UserRecord(
@@ -412,6 +521,8 @@ class Database:
             locale=locale,
             trust_level=trust_level,
             approved=approved,
+            email=stored_email,
+            email_verified=verified,
         )
 
     def user_exists(self, username: str) -> bool:
@@ -449,6 +560,132 @@ class Database:
             "UPDATE users SET password_hash = ? WHERE lower(username) = lower(?)",
             (password_hash, username),
         )
+        self._get_conn().commit()
+
+    def set_user_email(
+        self, username: str, email: str, *, verified: bool = False
+    ) -> bool:
+        """Set or replace a user's email address.
+
+        Args:
+            username: Username to update.
+            email: Email address to store.
+            verified: Whether the address has been verified.
+
+        Returns:
+            True if the user existed.
+        """
+        cursor = self._get_conn().cursor()
+        cursor.execute(
+            "UPDATE users SET email = ?, email_verified = ? WHERE lower(username) = lower(?)",
+            (email.strip().lower(), 1 if verified else 0, username),
+        )
+        self._get_conn().commit()
+        return cursor.rowcount > 0
+
+    def mark_email_verified(self, username: str) -> bool:
+        """Mark a user's email address as verified."""
+        cursor = self._get_conn().cursor()
+        cursor.execute(
+            "UPDATE users SET email_verified = 1 WHERE lower(username) = lower(?)",
+            (username,),
+        )
+        self._get_conn().commit()
+        return cursor.rowcount > 0
+
+    # Email token operations
+
+    def create_email_token(
+        self,
+        username: str,
+        purpose: str,
+        token_hash: str,
+        expires_at: int,
+        created_at: int,
+        email: str = "",
+    ) -> EmailTokenRecord:
+        """Replace outstanding tokens for a purpose and store a new hash."""
+        cursor = self._get_conn().cursor()
+        cursor.execute(
+            "DELETE FROM email_tokens WHERE lower(username) = lower(?) AND purpose = ?",
+            (username, purpose),
+        )
+        cursor.execute(
+            "INSERT INTO email_tokens "
+            "(username, purpose, email, token_hash, expires_at, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (username, purpose, email, token_hash, expires_at, created_at),
+        )
+        self._get_conn().commit()
+        return EmailTokenRecord(
+            id=cursor.lastrowid,
+            username=username,
+            purpose=purpose,
+            email=email,
+            token_hash=token_hash,
+            expires_at=expires_at,
+            created_at=created_at,
+        )
+
+    def get_email_token(self, username: str, purpose: str) -> EmailTokenRecord | None:
+        """Get the newest unused token for a user and purpose."""
+        cursor = self._get_conn().cursor()
+        cursor.execute(
+            "SELECT id, username, purpose, email, token_hash, expires_at, created_at, "
+            "attempts, used_at "
+            "FROM email_tokens WHERE lower(username) = lower(?) AND purpose = ? "
+            "AND used_at IS NULL ORDER BY id DESC LIMIT 1",
+            (username, purpose),
+        )
+        row = cursor.fetchone()
+        return _email_token_from_row(row) if row else None
+
+    def increment_email_token_attempts(self, token_id: int) -> int:
+        """Increment a token's failed-attempt count and return the new count."""
+        cursor = self._get_conn().cursor()
+        cursor.execute(
+            "UPDATE email_tokens SET attempts = attempts + 1 WHERE id = ?",
+            (token_id,),
+        )
+        self._get_conn().commit()
+        cursor.execute("SELECT attempts FROM email_tokens WHERE id = ?", (token_id,))
+        row = cursor.fetchone()
+        return int(row["attempts"]) if row else 0
+
+    def consume_email_token(self, token_id: int, used_at: int) -> bool:
+        """Atomically mark an unused token as used.
+
+        Returns:
+            True when this call consumed the token, False when it was already
+            consumed (for example by a concurrent request).
+        """
+        cursor = self._get_conn().cursor()
+        cursor.execute(
+            "UPDATE email_tokens SET used_at = ? WHERE id = ? AND used_at IS NULL",
+            (used_at, token_id),
+        )
+        self._get_conn().commit()
+        return cursor.rowcount == 1
+
+    def delete_email_tokens(self, username: str, purpose: str | None = None) -> None:
+        """Delete all tokens for a user, optionally limited to one purpose."""
+        cursor = self._get_conn().cursor()
+        if purpose is None:
+            cursor.execute(
+                "DELETE FROM email_tokens WHERE lower(username) = lower(?)",
+                (username,),
+            )
+        else:
+            cursor.execute(
+                "DELETE FROM email_tokens WHERE lower(username) = lower(?) AND purpose = ?",
+                (username, purpose),
+            )
+        self._get_conn().commit()
+
+    def delete_expired_email_tokens(self, now: int) -> None:
+        """Delete expired tokens."""
+        cursor = self._get_conn().cursor()
+        cursor.execute("DELETE FROM email_tokens WHERE expires_at <= ?", (now,))
         self._get_conn().commit()
 
     # Refresh token operations
@@ -633,6 +870,12 @@ class Database:
                 f"SELECT {self._USER_COLUMNS} FROM users WHERE approved = 1 AND trust_level < ? ORDER BY username",
                 (TrustLevel.ADMIN.value,),
             )
+        return [self._user_from_row(row) for row in cursor.fetchall()]
+
+    def get_all_users(self) -> list[UserRecord]:
+        """Get every account ordered by username."""
+        cursor = self._get_conn().cursor()
+        cursor.execute(f"SELECT {self._USER_COLUMNS} FROM users ORDER BY username")
         return [self._user_from_row(row) for row in cursor.fetchall()]
 
     def get_server_owner(self) -> UserRecord | None:

@@ -85,6 +85,7 @@ def make_minimal_window(monkeypatch):
     window.menu_label = DummyWidget()
     window.edit_label = DummyWidget()
     window.edit_input = DummyWidget()
+    window.edit_input_password = DummyWidget()
     window.edit_input_multiline = DummyWidget()
     window.sound_manager = types.SimpleNamespace(play=lambda *args, **kwargs: None)
     window.client_options = {}
@@ -92,11 +93,13 @@ def make_minimal_window(monkeypatch):
     window.edit_mode_callback = None
     window.current_edit_read_only = False
     window.current_edit_multiline = False
+    window.current_edit_password = False
     window._pending_edit_clear = False
     window._pending_multiline_clear = False
     window.menu_list.Hide()
     window.menu_label.Hide()
     window.edit_input.Hide()
+    window.edit_input_password.Hide()
     window.edit_input_multiline.Hide()
     window.edit_label.Hide()
 
@@ -131,6 +134,31 @@ def test_on_edit_char_clears_pending_text(monkeypatch):
     assert window.edit_input.GetValue() == ""
     assert window._pending_edit_clear is False
     assert event.skipped is True
+
+
+def test_switch_to_edit_mode_uses_masked_control(monkeypatch):
+    window = make_minimal_window(monkeypatch)
+
+    window.switch_to_edit_mode(prompt="Password", password=True)
+
+    assert window.edit_input.visible is False
+    assert window.edit_input_multiline.visible is False
+    assert window.edit_input_password.visible is True
+    assert window.edit_input_password.focused is True
+    assert window.current_edit_password is True
+
+
+def test_on_edit_enter_submits_masked_value(monkeypatch):
+    window = make_minimal_window(monkeypatch)
+    submitted = []
+    window.switch_to_edit_mode(prompt="Password", callback=submitted.append, password=True)
+    window.edit_input_password.SetValue("secret")
+
+    window.on_edit_enter(None)
+
+    assert submitted == ["secret"]
+    assert window.current_mode == "list"
+    assert window.current_edit_password is False
 
 
 def test_on_edit_multiline_char_clears_pending_text(monkeypatch):

@@ -380,3 +380,25 @@ virtual-bots-profiles-line = { $profile } ({ $bot_count } bots) ghi đè: { $ove
 virtual-bots-profiles-no-overrides = kế thừa cấu hình gốc
 
 localization-in-progress-try-again = Bản địa hóa đang được xử lý. Vui lòng thử lại sau một phút.
+
+# Self-service password change
+change-password-option = Đổi mật khẩu
+change-password-current-prompt = Nhập mật khẩu hiện tại của bạn:
+change-password-new-prompt = Nhập mật khẩu mới của bạn ({ $min }-{ $max } ký tự):
+change-password-confirm-prompt = Nhập lại mật khẩu mới của bạn:
+change-password-wrong-current = Đây không phải mật khẩu hiện tại của bạn. Mật khẩu chưa được thay đổi.
+change-password-mismatch = Mật khẩu không khớp. Hãy thử lại.
+change-password-success = Mật khẩu của bạn đã được thay đổi.
+change-password-cancelled = Đã hủy đổi mật khẩu.
+
+# Account email settings
+email-change-invalid = Enter a valid email address.
+email-change-same = That is already your verified email address.
+email-change-unavailable = Email settings are not available on this server. Contact the server owner.
+email-change-send-failed = The confirmation email could not be sent. Try again later.
+email-change-pending = A confirmation code was sent to { $email }. Your current email stays active until you confirm the change.
+email-change-success = Email address updated.
+email-change-code-invalid = That confirmation code is invalid or expired.
+email-change-code-expired = That confirmation code has expired. Request a new one.
+email-change-code-locked = Too many incorrect attempts. Request a new confirmation code.
+account-settings = Account settings

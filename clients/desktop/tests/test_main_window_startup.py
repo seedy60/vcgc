@@ -175,6 +175,19 @@ def test_on_server_disconnect_status_mode(monkeypatch):
     assert reconnect_calls[0][0] == 10000
 
 
+def test_on_server_disconnect_logout_returns_to_login(monkeypatch):
+    window = make_window_stub(monkeypatch, should_connect=True)
+    window.returning_to_login = False
+    calls = []
+    window._return_to_login = lambda: calls.append(window.returning_to_login)
+
+    window.on_server_disconnect({"return_to_login": True})
+
+    assert calls == [True]
+    assert window._show_connection_error_calls == []
+    assert window.sound_manager.stop_calls == [False]
+
+
 def test_on_server_disconnect_uses_packet_message(monkeypatch):
     window = make_window_stub(monkeypatch, should_connect=True)
     window.connected = False

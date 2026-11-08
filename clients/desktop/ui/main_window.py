@@ -138,6 +138,7 @@ class MainWindow(wx.Frame):
         self.current_menu_item_ids = []  # Track item IDs for current menu (parallel to menu items)
         self.current_edit_multiline = False  # Track if current editbox is multiline
         self.current_edit_read_only = False  # Track if current editbox is read-only
+        self.current_edit_password = False  # Track if current editbox is masked
         self._pending_edit_clear = False  # Clear single-line value on first printable key
         self._pending_multiline_clear = False  # Clear multiline value on first printable key
 
@@ -206,6 +207,15 @@ class MainWindow(wx.Frame):
         self.edit_input.Bind(wx.EVT_TEXT_ENTER, self.on_edit_enter)
         self.edit_input.Bind(wx.EVT_CHAR, self.on_edit_char)
         self.edit_input.Hide()
+
+        # Password edit input - separate control because wxMSW does not reliably
+        # apply the password style after the control has been created.
+        self.edit_input_password = wx.TextCtrl(
+            panel, size=ui_cfg.edit_size, style=wx.TE_PROCESS_ENTER | wx.TE_PASSWORD
+        )
+        self.edit_input_password.Bind(wx.EVT_TEXT_ENTER, self.on_edit_enter)
+        self.edit_input_password.Bind(wx.EVT_CHAR, self.on_edit_char)
+        self.edit_input_password.Hide()
         self.edit_label.Hide()
 
         # Multiline edit input - for longer text
@@ -929,6 +939,7 @@ class MainWindow(wx.Frame):
         default_value="",
         multiline=False,
         read_only=False,
+        password=False,
     ):
         """
         Switch from list mode to edit mode.
@@ -939,6 +950,7 @@ class MainWindow(wx.Frame):
             default_value: Default text to populate the editbox with
             multiline: Whether to use a multiline editbox
             read_only: Whether the editbox is read-only
+            password: Whether to mask the entered text (single-line only)
         """
         already_in_edit = self.current_mode == "edit"
 
@@ -952,8 +964,22 @@ class MainWindow(wx.Frame):
         self.edit_label.SetLabel(label)
 
         # Choose which edit control to use
-        if multiline:
+        if password:
             self.edit_input.Hide()
+            self.edit_input_multiline.Hide()
+            self.edit_input_password.Show()
+            self.edit_input_password.Clear()
+            self.edit_input_password.SetValue(default_value)
+            self.edit_input_password.SetEditable(not read_only)
+            self.edit_input_password.SetName(label)
+            self.edit_input_password.SetFocus()
+            self.current_edit_multiline = False
+            self._schedule_pending_clear(
+                self.edit_input_password, False, default_value, read_only
+            )
+        elif multiline:
+            self.edit_input.Hide()
+            self.edit_input_password.Hide()
             self.edit_input_multiline.Show()
             self.edit_input_multiline.Clear()
             self.edit_input_multiline.SetValue(default_value)
@@ -964,6 +990,7 @@ class MainWindow(wx.Frame):
             self._schedule_pending_clear(self.edit_input_multiline, True, default_value, read_only)
         else:
             self.edit_input_multiline.Hide()
+            self.edit_input_password.Hide()
             self.edit_input.Show()
             self.edit_input.Clear()
             self.edit_input.SetValue(default_value)
@@ -978,6 +1005,7 @@ class MainWindow(wx.Frame):
         self.current_mode = "edit"
         self.edit_mode_callback = callback
         self.current_edit_read_only = read_only
+        self.current_edit_password = password
 
     def switch_to_list_mode(self):
         """Switch from edit mode back to list mode."""
@@ -986,6 +1014,7 @@ class MainWindow(wx.Frame):
 
         # Hide edit inputs and label
         self.edit_input.Hide()
+        self.edit_input_password.Hide()
         self.edit_input_multiline.Hide()
         self.edit_label.Hide()
 
@@ -996,12 +1025,21 @@ class MainWindow(wx.Frame):
 
         self.current_mode = "list"
         self.edit_mode_callback = None
+        self.current_edit_password = False
         self._pending_edit_clear = False
         self._pending_multiline_clear = False
 
     def on_edit_enter(self, event):
         """Handle Enter key in edit mode input."""
-        text = self.edit_input.GetValue().strip()
+        if self.current_edit_multiline:
+            control = self.edit_input_multiline
+        elif self.current_edit_password:
+            control = self.edit_input_password
+        else:
+            control = self.edit_input
+        text = control.GetValue()
+        if not self.current_edit_password:
+            text = text.strip()
 
         # For read-only editboxes, Enter just closes them
         # For editable editboxes, Enter submits the value
@@ -1042,7 +1080,8 @@ class MainWindow(wx.Frame):
             and self._should_clear_on_char_event(event, key_code)
             and not self.current_edit_read_only
         ):
-            self.edit_input.Clear()
+            control = self.edit_input_password if self.current_edit_password else self.edit_input
+            control.Clear()
             self._pending_edit_clear = False
 
         # Only play typing sounds for printable characters (not Enter, Backspace, etc.)
@@ -1290,11 +1329,46 @@ class MainWindow(wx.Frame):
             # Explicit disconnect with message dialog (e.g., account declined)
             message = disconnect_message or self.last_server_message or "Disconnected by server."
             self._show_connection_error(message, return_to_login=return_to_login)
+        elif return_to_login:
+            # A normal logout returns to the login dialog instead of exiting.
+            self.returning_to_login = True
+            self.sound_manager.stop_music(fade=False)
+            self._return_to_login()
         else:
-            # Explicit disconnect, close quietly (e.g., user logout)
+            # Explicit disconnect, close quietly.
             self._force_close = True
             self.speaker.speak("Disconnected.", interrupt=False)
             wx.CallLater(500, self.Close)
+
+    def on_registration_required(self, packet):
+        """Return to login when an account must be created explicitly."""
+        message = packet.get("message", "Create an account to continue.")
+        message += "\n\nUse Create Account in the login dialog to register and verify an email address."
+        self._return_to_login_after_account_flow(
+            message,
+            "Account Required",
+        )
+
+    def on_email_verification_required(self, packet):
+        """Return to login so the user can verify their email."""
+        message = packet.get("message", "Verify your email before logging in.")
+        message += (
+            "\n\nUse Advanced > Verify Account Email in the login dialog "
+            "to enter the code."
+        )
+        self._return_to_login_after_account_flow(
+            message,
+            "Email Verification Required",
+        )
+
+    def _return_to_login_after_account_flow(self, message: str, title: str) -> None:
+        """Disconnect cleanly and reopen the login dialog after an auth prompt."""
+        self.returning_to_login = True
+        self.sound_manager.stop_music(fade=False)
+        if self.network:
+            self.network.disconnect(wait=True)
+        wx.MessageBox(message, title, wx.OK | wx.ICON_INFORMATION)
+        self._return_to_login()
 
     def _format_status_text(self, packet):
         """Format a lifecycle status packet into readable text."""
@@ -1417,6 +1491,10 @@ class MainWindow(wx.Frame):
         """Close main window and show login dialog again."""
         # Hide the main window
         self.Hide()
+
+        # Ensure the old websocket thread is gone before starting a new session.
+        if self.network:
+            self.network.disconnect(wait=True)
 
         # Show login dialog
         login_dialog = LoginDialog(self)
@@ -1661,6 +1739,47 @@ class MainWindow(wx.Frame):
         dlg.Destroy()
         # Send updated client options to server after saving
         self.send_client_options_to_server()
+
+    def on_open_account_settings(self, packet):
+        """Open the signed-in account's email settings dialog."""
+        from .auth_dialogs import AccountEmailDialog
+
+        existing = getattr(self, "account_email_dialog", None)
+        if existing:
+            existing.Raise()
+            return
+        dialog = AccountEmailDialog(
+            self,
+            packet,
+            send_packet=self.network.send_packet,
+            on_closed=lambda _dialog: setattr(self, "account_email_dialog", None),
+        )
+        self.account_email_dialog = dialog
+        dialog.Show()
+
+    def on_email_change_pending(self, packet):
+        """Forward a pending email change response to the settings dialog."""
+        dialog = getattr(self, "account_email_dialog", None)
+        if dialog:
+            dialog.apply_server_packet(packet)
+
+    def on_email_change_complete(self, packet):
+        """Apply a completed email change and update the saved profile."""
+        email = packet.get("email", "")
+        account_id = self.credentials.get("account_id")
+        if email and account_id and self.config_manager and self.server_id:
+            self.config_manager.update_account(
+                self.server_id, account_id, email=email
+            )
+        dialog = getattr(self, "account_email_dialog", None)
+        if dialog:
+            dialog.apply_server_packet(packet)
+
+    def on_email_change_failed(self, packet):
+        """Forward an email change failure to the settings dialog."""
+        dialog = getattr(self, "account_email_dialog", None)
+        if dialog:
+            dialog.apply_server_packet(packet)
 
     def on_server_speak(self, packet):
         """Handle speak packet from server."""
@@ -2180,6 +2299,7 @@ class MainWindow(wx.Frame):
         default_value = packet.get("default_value", "")
         multiline = packet.get("multiline", False)
         read_only = packet.get("read_only", False)
+        password = packet.get("password", False)
         content_format = packet.get("content_format", "text")
 
         def on_submit(text):
@@ -2204,7 +2324,7 @@ class MainWindow(wx.Frame):
             on_submit("")
             return
 
-        self.switch_to_edit_mode(prompt, on_submit, default_value, multiline, read_only)
+        self.switch_to_edit_mode(prompt, on_submit, default_value, multiline, read_only, password)
 
     def on_server_document_editor(self, packet):
         """Handle document_editor packet from server — open the editor dialog."""

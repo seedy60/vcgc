@@ -61,3 +61,13 @@ def test_main_menu_includes_active_tables_option() -> None:
     texts = _menu_texts(viewer, "main_menu")
     expected = Localization.get(viewer.locale, "view-active-tables")
     assert expected in texts
+
+
+def test_main_menu_includes_account_settings_for_every_authenticated_user() -> None:
+    server = _make_server()
+    expected = Localization.get("en", "account-settings")
+
+    for approved in (True, False):
+        viewer = MockUser("Alice", approved=approved)
+        server._show_main_menu(viewer)
+        assert expected in _menu_texts(viewer, "main_menu")

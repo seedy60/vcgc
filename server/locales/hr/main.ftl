@@ -380,3 +380,25 @@ virtual-bots-profiles-line = { $profile } ({ $bot_count } botova) nadjačava: { 
 virtual-bots-profiles-no-overrides = nasljeđuje osnovnu konfiguraciju
 
 localization-in-progress-try-again = Lokalizacija je u tijeku. Pokušajte ponovno za minutu.
+
+# Self-service password change
+change-password-option = Promijeni lozinku
+change-password-current-prompt = Unesite svoju trenutačnu lozinku:
+change-password-new-prompt = Unesite svoju novu lozinku ({ $min }-{ $max } znakova):
+change-password-confirm-prompt = Ponovno unesite svoju novu lozinku:
+change-password-wrong-current = To nije vaša trenutačna lozinka. Lozinka nije promijenjena.
+change-password-mismatch = Lozinke se ne podudaraju. Pokušajte ponovno.
+change-password-success = Vaša lozinka je promijenjena.
+change-password-cancelled = Promjena lozinke otkazana.
+
+# Account email settings
+email-change-invalid = Enter a valid email address.
+email-change-same = That is already your verified email address.
+email-change-unavailable = Email settings are not available on this server. Contact the server owner.
+email-change-send-failed = The confirmation email could not be sent. Try again later.
+email-change-pending = A confirmation code was sent to { $email }. Your current email stays active until you confirm the change.
+email-change-success = Email address updated.
+email-change-code-invalid = That confirmation code is invalid or expired.
+email-change-code-expired = That confirmation code has expired. Request a new one.
+email-change-code-locked = Too many incorrect attempts. Request a new confirmation code.
+account-settings = Account settings

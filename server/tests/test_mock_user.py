@@ -46,6 +46,9 @@ def test_mock_user_menu_and_editbox_updates():
     user.remove_editbox("chat")
     assert "chat" not in user.editboxes
 
+    user.show_editbox("secret", "Password", password=True)
+    assert user.editboxes["secret"]["password"] is True
+
     user.clear_ui()
     assert not user.menus and not user.editboxes
     user.clear_messages()

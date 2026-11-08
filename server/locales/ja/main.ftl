@@ -368,3 +368,25 @@ virtual-bots-profiles-line = { $profile }({ $bot_count }個のボット)オー�
 virtual-bots-profiles-no-overrides = ベース設定を継承
 
 localization-in-progress-try-again = ローカライズ処理中です。1分後にもう一度お試しください。
+
+# Self-service password change
+change-password-option = パスワードを変更
+change-password-current-prompt = 現在のパスワードを入力してください:
+change-password-new-prompt = 新しいパスワードを入力してください（{ $min }〜{ $max }文字）:
+change-password-confirm-prompt = 新しいパスワードをもう一度入力してください:
+change-password-wrong-current = 現在のパスワードが正しくありません。パスワードは変更されていません。
+change-password-mismatch = パスワードが一致しません。もう一度お試しください。
+change-password-success = パスワードを変更しました。
+change-password-cancelled = パスワードの変更をキャンセルしました。
+
+# Account email settings
+email-change-invalid = Enter a valid email address.
+email-change-same = That is already your verified email address.
+email-change-unavailable = Email settings are not available on this server. Contact the server owner.
+email-change-send-failed = The confirmation email could not be sent. Try again later.
+email-change-pending = A confirmation code was sent to { $email }. Your current email stays active until you confirm the change.
+email-change-success = Email address updated.
+email-change-code-invalid = That confirmation code is invalid or expired.
+email-change-code-expired = That confirmation code has expired. Request a new one.
+email-change-code-locked = Too many incorrect attempts. Request a new confirmation code.
+account-settings = Account settings

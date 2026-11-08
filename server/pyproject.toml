@@ -2,7 +2,7 @@
 name = "playpalace-server"
 version = "11.0.0"
 description = "PlayPalace v11 Game Server"
-readme = "../docs/design/plans/overview.md"
+readme = { text = "PlayPalace v11 game server. See the repository README and `docs/design/` for documentation.", content-type = "text/markdown" }
 requires-python = ">=3.13"
 dependencies = [
     "websockets>=14.0",

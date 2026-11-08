@@ -138,4 +138,5 @@ async def test_main_menu_logout_disconnects(server):
     await server._handle_logout_confirm_selection(user, "yes")
 
     assert ("goodbye", {}) in user.spoken
-    assert any(pkt.get("type") == "disconnect" for pkt in user.connection.sent)
+    disconnect = next(pkt for pkt in user.connection.sent if pkt.get("type") == "disconnect")
+    assert disconnect["return_to_login"] is True

@@ -190,6 +190,7 @@ const elements = {
   connectForm: document.getElementById("connect-form"),
   username: document.getElementById("username"),
   password: document.getElementById("password"),
+  connectBtn: document.getElementById("connect-btn"),
   togglePassword: document.getElementById("toggle-password"),
   rememberMe: document.getElementById("remember-me"),
   openLoginBtn: document.getElementById("open-login-btn"),
@@ -234,6 +235,35 @@ const elements = {
   appVersion: document.getElementById("app-version"),
   documentEditorDialog: document.getElementById("document-editor-dialog"),
   markdownViewerDialog: document.getElementById("markdown-viewer-dialog"),
+
+  createAccountBtn: document.getElementById("create-account-btn"),
+  forgotPasswordBtn: document.getElementById("forgot-password-btn"),
+  accountFlowDialog: document.getElementById("account-flow-dialog"),
+  accountFlowForm: document.getElementById("account-flow-form"),
+  accountFlowTitle: document.getElementById("account-flow-title"),
+  accountFlowMessage: document.getElementById("account-flow-message"),
+  accountFlowStatus: document.getElementById("account-flow-status"),
+  accountFlowSend: document.getElementById("account-flow-send"),
+  accountFlowCancel: document.getElementById("account-flow-cancel"),
+  accountFlowSubmit: document.getElementById("account-flow-submit"),
+  flowUsername: document.getElementById("flow-username"),
+  flowUsernameLabel: document.getElementById("flow-username-label"),
+  flowEmail: document.getElementById("flow-email"),
+  flowEmailLabel: document.getElementById("flow-email-label"),
+  flowPassword: document.getElementById("flow-password"),
+  flowPasswordLabel: document.getElementById("flow-password-label"),
+  flowCode: document.getElementById("flow-code"),
+  flowCodeLabel: document.getElementById("flow-code-label"),
+  flowNewPassword: document.getElementById("flow-new-password"),
+  flowNewPasswordLabel: document.getElementById("flow-new-password-label"),
+  accountSettingsDialog: document.getElementById("account-settings-dialog"),
+  accountSettingsCurrent: document.getElementById("account-settings-current"),
+  accountSettingsEmail: document.getElementById("account-settings-email"),
+  accountSettingsCode: document.getElementById("account-settings-code"),
+  accountSettingsStatus: document.getElementById("account-settings-status"),
+  accountSettingsSend: document.getElementById("account-settings-send"),
+  accountSettingsClose: document.getElementById("account-settings-close"),
+  accountSettingsVerify: document.getElementById("account-settings-verify"),
 };
 
 const store = createStore();
@@ -305,6 +335,19 @@ let focusMenuOnNextMenuPacket = false;
 let pendingActionsMenuRequest = false;
 let activeActionsMenu = null;
 let pendingAuthMethod = null;
+const accountFlow = {
+  mode: null,
+  ws: null,
+  username: "",
+  email: "",
+  password: "",
+};
+const accountSettings = {
+  username: "",
+  currentEmail: "",
+  pendingEmail: "",
+  available: false,
+};
 let refreshTimerId = null;
 let reconnectTimerId = null;
 
@@ -592,6 +635,9 @@ function resetDisconnectedUi() {
   audio.stopAll();
   closeInlineInput({ returnFocus: false });
   closeActionsDialog();
+  if (elements.accountSettingsDialog?.open) {
+    elements.accountSettingsDialog.close();
+  }
   setConnectedUi(false);
 }
 
@@ -912,6 +958,7 @@ function closeInlineInput({ returnFocus = true } = {}) {
   elements.inlineInputPrompt.textContent = "";
   elements.inlineInputValue.value = "";
   elements.inlineInputValue.readOnly = false;
+  elements.inlineInputValue.type = "text";
   if (returnFocus && store.state.connection.authenticated) {
     elements.menuList.focus();
   }
@@ -934,6 +981,7 @@ function showInlineInput(packet) {
   pendingInlineInput = packet;
   const promptText = packet.prompt || "Enter value";
   elements.inlineInputPrompt.textContent = promptText;
+  elements.inlineInputValue.type = packet.password ? "password" : "text";
   elements.inlineInputValue.value = packet.default_value || "";
   elements.inlineInputValue.readOnly = Boolean(packet.read_only);
   elements.inlineInputValue.setAttribute("aria-label", promptText);
@@ -1385,6 +1433,49 @@ function handlePacket(packet) {
       });
       break;
     }
+    case "registration_required": {
+      setLoginError(packet.message || "Create an account to continue.", { announce: true });
+      if (!elements.accountFlowDialog.open) {
+        openAccountFlow("register");
+      }
+      break;
+    }
+    case "email_verification_required": {
+      setLoginError(packet.message || "Verify your email before logging in.", { announce: true });
+      if (!elements.accountFlowDialog.open) {
+        openAccountFlow("verify");
+        elements.flowUsername.value = packet.username || elements.username.value;
+      }
+      break;
+    }
+    case "open_account_settings": {
+      openAccountSettings(packet);
+      break;
+    }
+    case "email_change_pending": {
+      accountSettings.pendingEmail = packet.email || "";
+      setAccountSettingsStatus(
+        packet.message || "Confirmation code sent."
+      );
+      elements.accountSettingsCode.focus();
+      break;
+    }
+    case "email_change_complete": {
+      accountSettings.currentEmail = packet.email || accountSettings.pendingEmail;
+      accountSettings.pendingEmail = "";
+      elements.accountSettingsEmail.value = "";
+      elements.accountSettingsCode.value = "";
+      renderAccountSettingsCurrent();
+      setAccountSettingsStatus(packet.message || "Email address updated.");
+      break;
+    }
+    case "email_change_failed": {
+      setAccountSettingsStatus(
+        packet.message || "Email change failed.",
+        { isError: true }
+      );
+      break;
+    }
     case "update_options_lists": {
       store.setServerOptions({
         games: packet.games || [],
@@ -1395,6 +1486,417 @@ function handlePacket(packet) {
     default: {
       break;
     }
+  }
+}
+
+function setAccountFlowStatus(message, { isError = false } = {}) {
+  elements.accountFlowStatus.textContent = message || "";
+  elements.accountFlowStatus.classList.toggle("error", Boolean(isError));
+}
+
+function setAccountSettingsStatus(message, { isError = false } = {}) {
+  elements.accountSettingsStatus.textContent = message || "";
+  elements.accountSettingsStatus.classList.toggle("error", Boolean(isError));
+}
+
+function renderAccountSettingsCurrent() {
+  elements.accountSettingsCurrent.textContent = accountSettings.currentEmail
+    ? `Signed in as ${accountSettings.username}. Current email: ${accountSettings.currentEmail}`
+    : `Signed in as ${accountSettings.username}. Current email: not set`;
+}
+
+function openAccountSettings(packet) {
+  accountSettings.username = packet.username || authState.username || "";
+  accountSettings.currentEmail = packet.email || "";
+  accountSettings.pendingEmail = "";
+  accountSettings.available = Boolean(packet.available);
+  elements.accountSettingsEmail.value = "";
+  elements.accountSettingsCode.value = "";
+  renderAccountSettingsCurrent();
+  setAccountSettingsStatus(
+    accountSettings.available
+      ? ""
+      : "Email settings are not available on this server.",
+    { isError: !accountSettings.available }
+  );
+  elements.accountSettingsSend.disabled = !accountSettings.available;
+  elements.accountSettingsVerify.disabled = !accountSettings.available;
+  if (!elements.accountSettingsDialog.open) {
+    elements.accountSettingsDialog.showModal();
+  }
+  requestAnimationFrame(() => {
+    (accountSettings.available
+      ? elements.accountSettingsEmail
+      : elements.accountSettingsClose
+    ).focus();
+  });
+}
+
+function requestEmailChange() {
+  if (!accountSettings.available || !network) {
+    return;
+  }
+  const email = elements.accountSettingsEmail.value.trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    setAccountSettingsStatus("Enter a valid email address.", { isError: true });
+    elements.accountSettingsEmail.focus();
+    return;
+  }
+  if (!network.send({ type: "request_email_change", email })) {
+    setAccountSettingsStatus("Not connected to the server.", { isError: true });
+    return;
+  }
+  setAccountSettingsStatus("Sending a confirmation code...");
+}
+
+function confirmEmailChange() {
+  if (!accountSettings.available || !network) {
+    return;
+  }
+  const code = elements.accountSettingsCode.value.trim();
+  if (!code) {
+    setAccountSettingsStatus("Enter the confirmation code.", { isError: true });
+    elements.accountSettingsCode.focus();
+    return;
+  }
+  if (!network.send({ type: "verify_email_change", code })) {
+    setAccountSettingsStatus("Not connected to the server.", { isError: true });
+    return;
+  }
+  setAccountSettingsStatus("Confirming the new email address...");
+}
+
+function setAccountFlowField(labelEl, inputEl, visible) {
+  labelEl.hidden = !visible;
+  inputEl.hidden = !visible;
+}
+
+function configureAccountFlow(mode) {
+  const show = (field, visible) => {
+    const map = {
+      username: [elements.flowUsernameLabel, elements.flowUsername],
+      email: [elements.flowEmailLabel, elements.flowEmail],
+      password: [elements.flowPasswordLabel, elements.flowPassword],
+      code: [elements.flowCodeLabel, elements.flowCode],
+      newPassword: [elements.flowNewPasswordLabel, elements.flowNewPassword],
+    };
+    const [label, input] = map[field];
+    setAccountFlowField(label, input, visible);
+  };
+
+  show("username", true);
+  show("email", false);
+  show("password", false);
+  show("code", false);
+  show("newPassword", false);
+  elements.accountFlowSend.hidden = true;
+  elements.accountFlowSubmit.disabled = false;
+  elements.flowUsername.readOnly = false;
+  elements.flowEmail.readOnly = false;
+  elements.flowPassword.readOnly = false;
+  setAccountFlowStatus("");
+
+  if (mode === "register") {
+    elements.accountFlowTitle.textContent = "Create account";
+    elements.accountFlowMessage.textContent =
+      "Enter a username, email address, and password. The server will email a verification code.";
+    show("email", true);
+    show("password", true);
+    elements.accountFlowSubmit.textContent = "Create account";
+  } else if (mode === "register-verify") {
+    elements.accountFlowTitle.textContent = "Verify email";
+    elements.accountFlowMessage.textContent =
+      "Enter the verification code sent to your email address.";
+    show("code", true);
+    elements.accountFlowSend.hidden = false;
+    elements.accountFlowSubmit.textContent = "Verify email";
+    elements.flowUsername.readOnly = true;
+    elements.flowEmail.readOnly = true;
+    elements.flowPassword.readOnly = true;
+  } else if (mode === "reset-request") {
+    elements.accountFlowTitle.textContent = "Forgot password";
+    elements.accountFlowMessage.textContent =
+      "Enter your username. If the account has an email address, the server will send a reset code.";
+    elements.accountFlowSubmit.textContent = "Send reset code";
+  } else if (mode === "reset-confirm") {
+    elements.accountFlowTitle.textContent = "Reset password";
+    elements.accountFlowMessage.textContent =
+      "Enter the emailed reset code and choose a new password.";
+    show("code", true);
+    show("newPassword", true);
+    elements.accountFlowSend.hidden = false;
+    elements.accountFlowSubmit.textContent = "Reset password";
+    elements.flowUsername.readOnly = true;
+  } else if (mode === "verify") {
+    elements.accountFlowTitle.textContent = "Verify email";
+    elements.accountFlowMessage.textContent = "Enter the code sent to the account's email address.";
+    show("code", true);
+    elements.accountFlowSend.hidden = false;
+    elements.accountFlowSubmit.textContent = "Verify email";
+    elements.flowUsername.readOnly = true;
+  }
+}
+
+function closeAccountFlow() {
+  if (accountFlow.ws) {
+    try {
+      accountFlow.ws.close();
+    } catch {
+      // Ignore transport errors while closing.
+    }
+    accountFlow.ws = null;
+  }
+  accountFlow.mode = null;
+  if (elements.accountFlowDialog.open) {
+    elements.accountFlowDialog.close();
+  }
+}
+
+function openAccountFlow(mode) {
+  accountFlow.mode = mode;
+  accountFlow.username = "";
+  accountFlow.email = "";
+  accountFlow.password = "";
+  const remembered = normalizeUsername(elements.username.value) || loadRememberedUsername();
+  elements.flowUsername.value = remembered;
+  elements.flowEmail.value = "";
+  elements.flowPassword.value = "";
+  elements.flowCode.value = "";
+  elements.flowNewPassword.value = "";
+  configureAccountFlow(mode);
+  if (!elements.accountFlowDialog.open) {
+    elements.accountFlowDialog.showModal();
+  }
+  requestAnimationFrame(() => {
+    if (mode === "register") {
+      (elements.flowUsername.value ? elements.flowEmail : elements.flowUsername).focus();
+    } else {
+      elements.flowUsername.focus();
+    }
+  });
+}
+
+function openAuthSocket() {
+  return new Promise((resolve, reject) => {
+    let socket;
+    try {
+      socket = new WebSocket(getDefaultServerUrl());
+    } catch (error) {
+      reject(new Error(`Could not open the connection: ${String(error)}`));
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      socket.close();
+      reject(new Error("The server did not respond in time."));
+    }, 15000);
+    socket.addEventListener("open", () => {
+      window.clearTimeout(timer);
+      resolve(socket);
+    });
+    socket.addEventListener("error", () => {
+      window.clearTimeout(timer);
+      reject(new Error("Could not connect to the server."));
+    });
+  });
+}
+
+function authSendAndWait(socket, packet, expectedTypes) {
+  return new Promise((resolve, reject) => {
+    const expected = new Set(expectedTypes);
+    const timer = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("The server did not respond in time."));
+    }, 20000);
+    const cleanup = () => {
+      window.clearTimeout(timer);
+      socket.removeEventListener("message", onMessage);
+      socket.removeEventListener("close", onClose);
+    };
+    const onMessage = (event) => {
+      let response;
+      try {
+        response = JSON.parse(event.data);
+      } catch {
+        cleanup();
+        reject(new Error("The server sent an invalid response."));
+        return;
+      }
+      if (response.type === "disconnect") {
+        cleanup();
+        reject(new Error(response.message || "The request was rejected."));
+      } else if (expected.has(response.type)) {
+        cleanup();
+        resolve(response);
+      }
+    };
+    const onClose = () => {
+      cleanup();
+      reject(new Error("The server closed the connection."));
+    };
+    socket.addEventListener("message", onMessage);
+    socket.addEventListener("close", onClose);
+    try {
+      socket.send(JSON.stringify(packet));
+    } catch (error) {
+      cleanup();
+      reject(new Error(`Could not send the request: ${String(error)}`));
+    }
+  });
+}
+
+async function ensureAuthSocket() {
+  if (accountFlow.ws && accountFlow.ws.readyState === WebSocket.OPEN) {
+    return accountFlow.ws;
+  }
+  if (accountFlow.ws) {
+    try {
+      accountFlow.ws.close();
+    } catch {
+      // Ignore close errors.
+    }
+  }
+  accountFlow.ws = await openAuthSocket();
+  return accountFlow.ws;
+}
+
+async function submitAccountFlow() {
+  const mode = accountFlow.mode;
+  const username = normalizeUsername(elements.flowUsername.value);
+  if (!username) {
+    setAccountFlowStatus("Username is required.", { isError: true });
+    elements.flowUsername.focus();
+    return;
+  }
+
+  try {
+    const socket = await ensureAuthSocket();
+    if (mode === "register") {
+      const email = elements.flowEmail.value.trim().toLowerCase();
+      const password = elements.flowPassword.value;
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+        setAccountFlowStatus("Enter a valid email address.", { isError: true });
+        elements.flowEmail.focus();
+        return;
+      }
+      if (!password) {
+        setAccountFlowStatus("Password is required.", { isError: true });
+        elements.flowPassword.focus();
+        return;
+      }
+      const response = await authSendAndWait(
+        socket,
+        { type: "register", username, email, password },
+        ["registration_pending", "registration_error"]
+      );
+      if (response.type === "registration_error") {
+        setAccountFlowStatus(response.message || "Registration failed.", { isError: true });
+        return;
+      }
+      accountFlow.mode = "register-verify";
+      accountFlow.username = username;
+      accountFlow.email = email;
+      accountFlow.password = password;
+      configureAccountFlow("register-verify");
+      elements.flowUsername.value = username;
+      setAccountFlowStatus(response.message || "Verification code sent.");
+      elements.flowCode.focus();
+      return;
+    }
+
+    if (mode === "register-verify" || mode === "verify") {
+      const code = elements.flowCode.value.trim();
+      if (!code) {
+        setAccountFlowStatus("Enter the verification code.", { isError: true });
+        elements.flowCode.focus();
+        return;
+      }
+      const response = await authSendAndWait(
+        socket,
+        { type: "verify_email", username, code },
+        ["email_verified", "email_verification_failed"]
+      );
+      if (response.type === "email_verification_failed") {
+        setAccountFlowStatus(response.message || "Verification failed.", { isError: true });
+        return;
+      }
+      closeAccountFlow();
+      elements.username.value = username;
+      if (mode === "register-verify") {
+        elements.password.value = accountFlow.password;
+        elements.rememberMe.checked = true;
+      }
+      setStatus(response.message || "Email verified. Log in to continue.");
+      elements.connectBtn.focus();
+      return;
+    }
+
+    if (mode === "reset-request") {
+      const response = await authSendAndWait(
+        socket,
+        { type: "request_password_reset", username },
+        ["password_reset_requested"]
+      );
+      accountFlow.mode = "reset-confirm";
+      accountFlow.username = username;
+      configureAccountFlow("reset-confirm");
+      elements.flowUsername.value = username;
+      setAccountFlowStatus(response.message || "Check your email for a reset code.");
+      elements.flowCode.focus();
+      return;
+    }
+
+    if (mode === "reset-confirm") {
+      const code = elements.flowCode.value.trim();
+      const newPassword = elements.flowNewPassword.value;
+      if (!code || !newPassword) {
+        setAccountFlowStatus("Enter the reset code and a new password.", { isError: true });
+        return;
+      }
+      const response = await authSendAndWait(
+        socket,
+        { type: "reset_password", username, code, new_password: newPassword },
+        ["password_reset_complete", "password_reset_failed"]
+      );
+      if (response.type === "password_reset_failed") {
+        setAccountFlowStatus(response.message || "Password reset failed.", { isError: true });
+        return;
+      }
+      closeAccountFlow();
+      elements.username.value = username;
+      elements.password.value = newPassword;
+      setStatus(response.message || "Password reset. Log in with your new password.");
+      elements.connectBtn.focus();
+    }
+  } catch (error) {
+    setAccountFlowStatus(String(error.message || error), { isError: true });
+  }
+}
+
+async function resendAccountFlowCode() {
+  const mode = accountFlow.mode;
+  const username = normalizeUsername(elements.flowUsername.value);
+  if (!username) {
+    return;
+  }
+  try {
+    const socket = await ensureAuthSocket();
+    if (mode === "reset-confirm") {
+      const response = await authSendAndWait(
+        socket,
+        { type: "request_password_reset", username },
+        ["password_reset_requested"]
+      );
+      setAccountFlowStatus(response.message || "A new code has been sent.");
+    } else if (mode === "register-verify" || mode === "verify") {
+      const response = await authSendAndWait(
+        socket,
+        { type: "resend_verification", username },
+        ["verification_resent"]
+      );
+      setAccountFlowStatus(response.message || "A new code has been sent.");
+    }
+  } catch (error) {
+    setAccountFlowStatus(String(error.message || error), { isError: true });
   }
 }
 
@@ -1533,7 +2035,52 @@ async function bootstrap() {
     onAmbienceUp: () => adjustAmbienceVolume(10),
     onMusicDown: () => adjustMusicVolume(-10),
     onMusicUp: () => adjustMusicVolume(10),
-    isModalOpen: () => elements.loginDialog.open || elements.inputDialog.open,
+    isModalOpen: () =>
+    elements.loginDialog.open ||
+    elements.inputDialog.open ||
+    elements.accountFlowDialog.open ||
+    elements.accountSettingsDialog.open,
+  });
+
+  elements.createAccountBtn?.addEventListener("click", () => {
+    if (!elements.loginDialog.open) {
+      elements.loginDialog.showModal();
+    }
+    openAccountFlow("register");
+  });
+  elements.forgotPasswordBtn?.addEventListener("click", () => {
+    if (!elements.loginDialog.open) {
+      elements.loginDialog.showModal();
+    }
+    openAccountFlow("reset-request");
+  });
+  elements.accountFlowForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submitAccountFlow();
+  });
+  elements.accountFlowSend?.addEventListener("click", () => {
+    resendAccountFlowCode();
+  });
+  elements.accountFlowCancel?.addEventListener("click", () => {
+    closeAccountFlow();
+  });
+  elements.accountFlowDialog?.addEventListener("close", () => {
+    if (accountFlow.ws) {
+      try {
+        accountFlow.ws.close();
+      } catch {
+        // Ignore close errors.
+      }
+      accountFlow.ws = null;
+    }
+  });
+  elements.accountSettingsSend?.addEventListener("click", requestEmailChange);
+  elements.accountSettingsVerify?.addEventListener("click", confirmEmailChange);
+  elements.accountSettingsClose?.addEventListener("click", () => {
+    elements.accountSettingsDialog.close();
+  });
+  elements.accountSettingsDialog?.addEventListener("close", () => {
+    accountSettings.pendingEmail = "";
   });
 
   elements.connectForm.addEventListener("submit", (event) => {

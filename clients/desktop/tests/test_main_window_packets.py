@@ -103,13 +103,16 @@ def make_window():
     window.on_server_clear_ui = main_mod.MainWindow.on_server_clear_ui.__get__(window)
     window.switch_to_edit_mode_calls = []
 
-    def fake_switch_to_edit_mode(prompt, callback, default, multiline, read_only):
+    def fake_switch_to_edit_mode(
+        prompt, callback, default, multiline, read_only, password=False
+    ):
         window.switch_to_edit_mode_calls.append(
             {
                 "prompt": prompt,
                 "default": default,
                 "multiline": multiline,
                 "read_only": read_only,
+                "password": password,
                 "callback": callback,
             }
         )
@@ -217,9 +220,24 @@ def test_on_server_request_input_switches_to_edit_mode_and_sends_packet():
     assert call["prompt"] == "Enter name"
     assert call["default"] == "Alice"
     assert call["multiline"] is True
+    assert call["password"] is False
     callback = call["callback"]
     callback("hello")
     assert window.sent_packets[-1] == {"type": "editbox", "text": "hello", "input_id": "invite"}
+
+
+def test_on_server_request_input_passes_password_flag():
+    window = make_window()
+    packet = {
+        "type": "request_input",
+        "prompt": "Current password",
+        "input_id": "change_password_current",
+        "password": True,
+    }
+
+    window.on_server_request_input(packet)
+
+    assert window.switch_to_edit_mode_calls[-1]["password"] is True
 
 
 def test_on_server_clear_ui_resets_menu_and_audio():

@@ -72,6 +72,10 @@ PACKET_TO_HANDLER = {
     "update_options_lists": "on_update_options_lists",
     "open_client_options": "on_open_client_options",
     "open_server_options": "on_open_server_options",
+    "open_account_settings": "on_open_account_settings",
+    "email_change_pending": "on_email_change_pending",
+    "email_change_complete": "on_email_change_complete",
+    "email_change_failed": "on_email_change_failed",
     "table_create": "on_table_create",
     "pong": "on_server_pong",
     "chat": "on_receive_chat",
@@ -203,6 +207,30 @@ def test_get_server_host_parses_url():
     nm = NetworkManager(main_window=DummyMainWindow())
     assert nm._get_server_host("wss://playpalace.example:8443") == "playpalace.example"
     assert nm._get_server_host("not a url") == ""
+
+
+def test_prefer_ipv4_loopback_url_rewrites_insecure_localhost():
+    assert nm_mod._prefer_ipv4_loopback_url("ws://localhost:8000") == "ws://127.0.0.1:8000"
+    assert (
+        nm_mod._prefer_ipv4_loopback_url("ws://LOCALHOST:8000/path?x=1")
+        == "ws://127.0.0.1:8000/path?x=1"
+    )
+    assert nm_mod._prefer_ipv4_loopback_url("ws://example.com:8000") == "ws://example.com:8000"
+    assert nm_mod._prefer_ipv4_loopback_url("wss://localhost:8000") == "wss://localhost:8000"
+
+
+def test_open_connection_prefers_ipv4_for_insecure_localhost(monkeypatch):
+    nm = NetworkManager(main_window=DummyMainWindow())
+    calls = []
+
+    async def fake_connect(uri, **kwargs):
+        calls.append(uri)
+        return DummyWebsocket()
+
+    monkeypatch.setattr(nm_mod, "connect", fake_connect)
+    asyncio.run(nm._open_connection("ws://localhost:8000"))
+
+    assert calls == ["ws://127.0.0.1:8000"]
 
 
 def test_handle_packet_dispatches_to_main_window():

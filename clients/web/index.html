@@ -143,9 +143,73 @@
             </label>
           </div>
           <div class="row" style="justify-content: flex-end; margin-top: 10px;">
+            <button id="create-account-btn" type="button" class="secondary">Create account</button>
+            <button id="forgot-password-btn" type="button" class="secondary">Forgot password</button>
             <button id="connect-btn" type="submit">Connect</button>
           </div>
         </form>
+      </dialog>
+
+      <dialog id="account-flow-dialog">
+        <form method="dialog" id="account-flow-form">
+          <p><strong id="account-flow-title">Account</strong></p>
+          <p id="account-flow-message"></p>
+          <div style="display: grid; gap: 8px;">
+            <label id="flow-username-label">
+              Username
+              <input id="flow-username" type="text" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" />
+            </label>
+            <label id="flow-email-label">
+              Email
+              <input id="flow-email" type="email" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" />
+            </label>
+            <label id="flow-password-label">
+              Password
+              <input id="flow-password" type="password" autocomplete="new-password" />
+            </label>
+            <label id="flow-code-label">
+              Email code
+              <input id="flow-code" type="text" inputmode="text" autocomplete="one-time-code" autocapitalize="characters" autocorrect="off" spellcheck="false" />
+            </label>
+            <label id="flow-new-password-label">
+              New password
+              <input id="flow-new-password" type="password" autocomplete="new-password" />
+            </label>
+          </div>
+          <p id="account-flow-status" role="status" class="status"></p>
+          <div class="row" style="justify-content: flex-end; margin-top: 10px;">
+            <button id="account-flow-send" type="button" class="secondary">Send code</button>
+            <button id="account-flow-cancel" type="button" class="secondary">Cancel</button>
+            <button id="account-flow-submit" type="submit">Continue</button>
+          </div>
+        </form>
+      </dialog>
+
+      <dialog id="account-settings-dialog" aria-labelledby="account-settings-title">
+        <div>
+          <p><strong id="account-settings-title">Account Settings</strong></p>
+          <p id="account-settings-current"></p>
+          <p>
+            Enter a new email address. The server will send a confirmation code to it.
+            Your current address stays active until you confirm the change.
+          </p>
+          <div style="display: grid; gap: 8px;">
+            <label>
+              New email
+              <input id="account-settings-email" type="email" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" />
+            </label>
+            <label>
+              Confirmation code
+              <input id="account-settings-code" type="text" inputmode="text" autocomplete="one-time-code" autocapitalize="characters" autocorrect="off" spellcheck="false" />
+            </label>
+          </div>
+          <p id="account-settings-status" role="status" class="status"></p>
+          <div class="row" style="justify-content: flex-end; margin-top: 10px;">
+            <button id="account-settings-send" type="button" class="secondary">Send confirmation code</button>
+            <button id="account-settings-close" type="button" class="secondary">Close</button>
+            <button id="account-settings-verify" type="button">Save email</button>
+          </div>
+        </div>
       </dialog>
 
       <div id="live-polite" class="sr-only" aria-live="polite" aria-atomic="true"></div>

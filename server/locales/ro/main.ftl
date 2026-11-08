@@ -384,3 +384,25 @@ virtual-bots-profiles-line = { $profile } ({ $bot_count } boți) suprascrie: { $
 virtual-bots-profiles-no-overrides = moștenește configurația de bază
 
 localization-in-progress-try-again = Localizarea este în curs. Vă rugăm să încercați din nou peste un minut.
+
+# Self-service password change
+change-password-option = Schimbă parola
+change-password-current-prompt = Introduceți parola actuală:
+change-password-new-prompt = Introduceți noua parolă ({ $min }-{ $max } caractere):
+change-password-confirm-prompt = Introduceți din nou noua parolă:
+change-password-wrong-current = Aceasta nu este parola dvs. actuală. Parola nu a fost schimbată.
+change-password-mismatch = Parolele nu corespund. Încercați din nou.
+change-password-success = Parola dvs. a fost schimbată.
+change-password-cancelled = Schimbarea parolei anulată.
+
+# Account email settings
+email-change-invalid = Enter a valid email address.
+email-change-same = That is already your verified email address.
+email-change-unavailable = Email settings are not available on this server. Contact the server owner.
+email-change-send-failed = The confirmation email could not be sent. Try again later.
+email-change-pending = A confirmation code was sent to { $email }. Your current email stays active until you confirm the change.
+email-change-success = Email address updated.
+email-change-code-invalid = That confirmation code is invalid or expired.
+email-change-code-expired = That confirmation code has expired. Request a new one.
+email-change-code-locked = Too many incorrect attempts. Request a new confirmation code.
+account-settings = Account settings

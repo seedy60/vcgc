@@ -110,6 +110,17 @@ def test_network_user_audio_and_clear_ui_packets():
     assert user._current_editboxes == {}
 
 
+def test_network_user_password_editbox_packet():
+    user = NetworkUser("bob", "en", DummyConnection())
+
+    user.show_editbox("secret", "Enter password", password=True)
+
+    packet = drain_messages(user)[0]
+    assert packet["password"] is True
+    assert packet["multiline"] is False
+    assert user._current_editboxes["secret"]["password"] is True
+
+
 def test_network_user_editboxes_and_speak_queue():
     user = NetworkUser("carol", "en", DummyConnection())
 

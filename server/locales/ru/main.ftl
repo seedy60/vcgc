@@ -420,3 +420,25 @@ virtual-bots-profiles-line = { $profile } (ботов: { $bot_count }) пере�
 virtual-bots-profiles-no-overrides = наследует базовую конфигурацию
 
 localization-in-progress-try-again = Локализация ещё загружается. Пожалуйста, попробуйте снова через минуту.
+
+# Self-service password change
+change-password-option = Сменить пароль
+change-password-current-prompt = Введите текущий пароль:
+change-password-new-prompt = Введите новый пароль ({ $min }-{ $max } символов):
+change-password-confirm-prompt = Повторно введите новый пароль:
+change-password-wrong-current = Это не ваш текущий пароль. Пароль не изменён.
+change-password-mismatch = Пароли не совпадают. Попробуйте ещё раз.
+change-password-success = Ваш пароль изменён.
+change-password-cancelled = Смена пароля отменена.
+
+# Account email settings
+email-change-invalid = Enter a valid email address.
+email-change-same = That is already your verified email address.
+email-change-unavailable = Email settings are not available on this server. Contact the server owner.
+email-change-send-failed = The confirmation email could not be sent. Try again later.
+email-change-pending = A confirmation code was sent to { $email }. Your current email stays active until you confirm the change.
+email-change-success = Email address updated.
+email-change-code-invalid = That confirmation code is invalid or expired.
+email-change-code-expired = That confirmation code has expired. Request a new one.
+email-change-code-locked = Too many incorrect attempts. Request a new confirmation code.
+account-settings = Account settings

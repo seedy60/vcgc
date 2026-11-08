@@ -90,7 +90,16 @@ class AuthManager:
 
         return AuthResult.SUCCESS
 
-    def register(self, username: str, password: str, *, approved: bool = False, locale: str = "en") -> bool:
+    def register(
+        self,
+        username: str,
+        password: str,
+        *,
+        approved: bool = False,
+        locale: str = "en",
+        email: str | None = None,
+        email_verified: bool = False,
+    ) -> bool:
         """Register a new user.
 
         Args:
@@ -98,6 +107,8 @@ class AuthManager:
             password: Plaintext password.
             approved: Whether the account is pre-approved (skips admin approval).
             locale: Preferred locale.
+            email: Optional email address for verification and recovery.
+            email_verified: Whether the address has already been verified.
 
         Returns:
             True if registration succeeded, False if username taken.
@@ -108,9 +119,25 @@ class AuthManager:
         trust_level = TrustLevel.USER
 
         password_hash = self.hash_password(password)
-        self._db.create_user(username, password_hash, locale, trust_level, approved)
+        self._db.create_user(
+            username,
+            password_hash,
+            locale,
+            trust_level,
+            approved,
+            email=email,
+            email_verified=email_verified,
+        )
 
         return True
+
+    def set_email(self, username: str, email: str, *, verified: bool = False) -> bool:
+        """Set or replace a user's email address."""
+        return self._db.set_user_email(username, email, verified=verified)
+
+    def mark_email_verified(self, username: str) -> bool:
+        """Mark a user's email address as verified."""
+        return self._db.mark_email_verified(username)
 
     def reset_password(self, username: str, new_password: str) -> bool:
         """Reset a user's password.

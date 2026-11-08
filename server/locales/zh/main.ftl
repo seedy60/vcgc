@@ -311,3 +311,25 @@ virtual-bots-profiles-line = { $profile } ({ $bot_count } bots) overrides: { $ov
 virtual-bots-profiles-no-overrides = inherits base configuration
 
 localization-in-progress-try-again = 本地化正在进行中。请在一分钟后重试。
+
+# Self-service password change
+change-password-option = 修改密码
+change-password-current-prompt = 请输入当前密码：
+change-password-new-prompt = 请输入新密码（{ $min }-{ $max } 个字符）：
+change-password-confirm-prompt = 请再次输入新密码：
+change-password-wrong-current = 当前密码不正确。密码未更改。
+change-password-mismatch = 两次输入的密码不一致。请重试。
+change-password-success = 密码已更改。
+change-password-cancelled = 已取消修改密码。
+
+# Account email settings
+email-change-invalid = Enter a valid email address.
+email-change-same = That is already your verified email address.
+email-change-unavailable = Email settings are not available on this server. Contact the server owner.
+email-change-send-failed = The confirmation email could not be sent. Try again later.
+email-change-pending = A confirmation code was sent to { $email }. Your current email stays active until you confirm the change.
+email-change-success = Email address updated.
+email-change-code-invalid = That confirmation code is invalid or expired.
+email-change-code-expired = That confirmation code has expired. Request a new one.
+email-change-code-locked = Too many incorrect attempts. Request a new confirmation code.
+account-settings = Account settings

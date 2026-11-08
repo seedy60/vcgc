@@ -19,6 +19,7 @@ tables-menu-title = Available Tables
 play = Play
 view-active-tables = View active tables
 options = Options
+account-settings = Account settings
 logout = Logout
 back = Back
 done = Done
@@ -337,6 +338,36 @@ refresh-token-mismatch = Refresh token does not match username.
 # Registration
 registration-success = Registration successful! Your account is waiting for approval.
 registration-username-taken = Username already taken. Please choose a different username.
+registration-required = No account exists with that username. Create an account to continue.
+registration-email-required = An email address is required to create an account.
+registration-email-invalid = Enter a valid email address.
+registration-email-unavailable = Email verification is not configured on this server. Contact the server owner.
+registration-pending = Account created. Enter the verification code sent to { $email }.
+registration-pending-email-failed = Account created, but the verification email could not be sent. Try resending it later.
+email-verification-required = Verify your email address before logging in. A verification code was sent to { $email }.
+email-verification-success = Email verified. You can now log in.
+verification-code-invalid = That verification code is invalid or expired.
+verification-code-expired = That verification code has expired. Request a new one.
+verification-code-locked = Too many incorrect attempts. Request a new verification code.
+verification-resent = If that account needs verification, a new code has been sent.
+password-reset-requested = If an account with that username has an email address, a reset code has been sent.
+password-reset-success = Password reset. You can now log in with your new password.
+password-reset-code-invalid = That reset code is invalid or expired.
+password-reset-code-expired = That reset code has expired. Request a new one.
+password-reset-code-locked = Too many incorrect attempts. Request a new reset code.
+rate-limit-verification = Too many verification requests. Please wait and try again.
+rate-limit-password-reset = Too many password reset requests. Please wait and try again.
+
+# Account email settings
+email-change-invalid = Enter a valid email address.
+email-change-same = That is already your verified email address.
+email-change-unavailable = Email settings are not available on this server. Contact the server owner.
+email-change-send-failed = The confirmation email could not be sent. Try again later.
+email-change-pending = A confirmation code was sent to { $email }. Your current email stays active until you confirm the change.
+email-change-success = Email address updated.
+email-change-code-invalid = That confirmation code is invalid or expired.
+email-change-code-expired = That confirmation code has expired. Request a new one.
+email-change-code-locked = Too many incorrect attempts. Request a new confirmation code.
 
 # Preference fallback
 pref-invalid-value = Invalid selection, using default.
@@ -579,3 +610,13 @@ localization-in-progress-try-again = Localization in progress. Please try again 
 
 # Errors
 internal-error = Something went wrong. Please try again.
+
+# Self-service password change
+change-password-option = Change Password
+change-password-current-prompt = Enter your current password:
+change-password-new-prompt = Enter your new password ({ $min }-{ $max } characters):
+change-password-confirm-prompt = Re-enter your new password:
+change-password-wrong-current = That is not your current password. Password not changed.
+change-password-mismatch = The passwords do not match. Try again.
+change-password-success = Your password has been changed.
+change-password-cancelled = Password change cancelled.

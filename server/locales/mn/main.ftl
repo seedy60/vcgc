@@ -380,3 +380,25 @@ virtual-bots-profiles-line = { $profile } ({ $bot_count } бот) дарж би�
 virtual-bots-profiles-no-overrides = үндсэн тохиргооноос өвлөнө
 
 localization-in-progress-try-again = Нутагшуулалт хийгдэж байна. Нэг минутын дараа дахин оролдоно уу.
+
+# Self-service password change
+change-password-option = Нууц үг солих
+change-password-current-prompt = Одоогийн нууц үгээ оруулна уу:
+change-password-new-prompt = Шинэ нууц үгээ оруулна уу ({ $min }-{ $max } тэмдэгт):
+change-password-confirm-prompt = Шинэ нууц үгээ дахин оруулна уу:
+change-password-wrong-current = Энэ таны одоогийн нууц үг биш байна. Нууц үг өөрчлөгдөөгүй.
+change-password-mismatch = Нууц үгнүүд таарахгүй байна. Дахин оролдоно уу.
+change-password-success = Таны нууц үг өөрчлөгдлөө.
+change-password-cancelled = Нууц үг солих үйлдэл цуцлагдлаа.
+
+# Account email settings
+email-change-invalid = Enter a valid email address.
+email-change-same = That is already your verified email address.
+email-change-unavailable = Email settings are not available on this server. Contact the server owner.
+email-change-send-failed = The confirmation email could not be sent. Try again later.
+email-change-pending = A confirmation code was sent to { $email }. Your current email stays active until you confirm the change.
+email-change-success = Email address updated.
+email-change-code-invalid = That confirmation code is invalid or expired.
+email-change-code-expired = That confirmation code has expired. Request a new one.
+email-change-code-locked = Too many incorrect attempts. Request a new confirmation code.
+account-settings = Account settings

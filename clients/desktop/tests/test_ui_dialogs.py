@@ -1,6 +1,7 @@
 import pytest
 import wx
 
+from ui.auth_dialogs import AccountEmailDialog, PasswordRecoveryDialog, RegistrationDialog
 from ui.login_dialog import LoginDialog
 from ui.server_manager import AccountEditorDialog, ServerEditorDialog
 
@@ -247,6 +248,196 @@ def test_login_dialog_button_states_empty_tree(wx_app, monkeypatch):
         assert not dlg.edit_btn.IsEnabled()
         assert not dlg.delete_btn.IsEnabled()
         assert not dlg.add_account_btn.IsEnabled()
+    finally:
+        dlg.Destroy()
+
+
+def test_password_recovery_dialog_builds(wx_app):
+    dlg = PasswordRecoveryDialog(
+        None,
+        server_url="ws://localhost:8000",
+        username="alice",
+        server_name="Localhost",
+    )
+    try:
+        assert dlg.username_input.GetValue() == "alice"
+        assert dlg.request_btn.IsEnabled()
+        assert dlg.reset_btn.IsEnabled()
+    finally:
+        dlg.Destroy()
+
+
+def test_registration_dialog_builds(wx_app):
+    dlg = RegistrationDialog(
+        None,
+        server_url="ws://localhost:8000",
+        server_name="Localhost",
+    )
+    try:
+        assert dlg.register_btn.IsEnabled()
+        assert not dlg.verify_panel.IsShown()
+    finally:
+        dlg.Destroy()
+
+
+def test_account_email_dialog_requests_and_confirms_change(wx_app):
+    sent = []
+    dlg = AccountEmailDialog(
+        None,
+        {
+            "username": "alice",
+            "email": "old@example.com",
+            "email_verified": True,
+            "available": True,
+        },
+        send_packet=lambda packet: sent.append(packet) or True,
+    )
+    try:
+        dlg.email_input.SetValue("new@example.com")
+        dlg.on_send_code(None)
+        assert sent == [{"type": "request_email_change", "email": "new@example.com"}]
+
+        dlg.apply_server_packet(
+            {
+                "type": "email_change_pending",
+                "email": "new@example.com",
+                "message": "Code sent to new@example.com.",
+            }
+        )
+        dlg.code_input.SetValue("CHANGE7")
+        dlg.on_verify(None)
+        assert sent[-1] == {"type": "verify_email_change", "code": "CHANGE7"}
+
+        dlg.apply_server_packet(
+            {
+                "type": "email_change_complete",
+                "email": "new@example.com",
+                "message": "Email address updated.",
+            }
+        )
+        assert dlg.current_email == "new@example.com"
+        assert "new@example.com" in dlg.current_email_label.GetLabel()
+    finally:
+        dlg.Destroy()
+
+
+@pytest.mark.parametrize(
+    ("state", "message"),
+    [
+        ("invalid", "That confirmation code is invalid or expired."),
+        ("expired", "That confirmation code has expired. Request a new one."),
+        ("locked", "Too many incorrect attempts. Request a new confirmation code."),
+    ],
+)
+def test_account_email_dialog_displays_failure_state(wx_app, state, message):
+    """The dialog surfaces each server-side confirmation failure message."""
+    dlg = AccountEmailDialog(
+        None,
+        {
+            "username": "alice",
+            "email": "old@example.com",
+            "email_verified": True,
+            "available": True,
+        },
+        send_packet=lambda packet: True,
+    )
+    try:
+        dlg.apply_server_packet(
+            {
+                "type": "email_change_failed",
+                "message": message,
+                "attempts_remaining": 0 if state == "locked" else 4,
+            }
+        )
+        assert dlg.status_text.GetLabel() == message
+        assert dlg.current_email == "old@example.com"
+        assert dlg.email_input.IsEnabled()
+        assert dlg.verify_btn.IsEnabled()
+    finally:
+        dlg.Destroy()
+
+
+def test_account_email_dialog_disables_controls_when_email_unavailable(wx_app):
+    """The dialog clearly disables email settings without server delivery."""
+    sent = []
+    dlg = AccountEmailDialog(
+        None,
+        {
+            "username": "alice",
+            "email": "old@example.com",
+            "email_verified": True,
+            "available": False,
+        },
+        send_packet=lambda packet: sent.append(packet) or True,
+    )
+    try:
+        assert (
+            dlg.status_text.GetLabel()
+            == "Email settings are not available on this server."
+        )
+        assert not dlg.email_input.IsEnabled()
+        assert not dlg.code_input.IsEnabled()
+        assert not dlg.send_btn.IsEnabled()
+        assert not dlg.verify_btn.IsEnabled()
+        assert dlg.close_btn.IsEnabled()
+        assert sent == []
+    finally:
+        dlg.Destroy()
+
+
+def test_account_email_dialog_allows_retry_after_delivery_failure(wx_app):
+    """A failed delivery keeps the entered address and retry action available."""
+    sent = []
+    dlg = AccountEmailDialog(
+        None,
+        {
+            "username": "alice",
+            "email": "old@example.com",
+            "email_verified": True,
+            "available": True,
+        },
+        send_packet=lambda packet: sent.append(packet) or True,
+    )
+    try:
+        dlg.email_input.SetValue("new@example.com")
+        dlg.apply_server_packet(
+            {
+                "type": "email_change_failed",
+                "message": "The confirmation email could not be sent. Try again later.",
+            }
+        )
+        assert (
+            dlg.status_text.GetLabel()
+            == "The confirmation email could not be sent. Try again later."
+        )
+        assert dlg.email_input.IsEnabled()
+        assert dlg.send_btn.IsEnabled()
+        assert dlg.verify_btn.IsEnabled()
+
+        dlg.on_send_code(None)
+        assert sent == [{"type": "request_email_change", "email": "new@example.com"}]
+    finally:
+        dlg.Destroy()
+
+
+def test_login_dialog_forgot_password_uses_selected_account(wx_app, monkeypatch):
+    dlg, _ = _make_login_dialog(monkeypatch)
+    calls = []
+
+    class FakeRecoveryDialog:
+        def __init__(self, parent, *, server_url, username, server_name, ssl_context=None):
+            calls.append((username, server_name, server_url))
+
+        def ShowModal(self):
+            return wx.ID_CANCEL
+
+        def Destroy(self):
+            pass
+
+    monkeypatch.setattr("ui.login_dialog.SmtpPasswordRecoveryDialog", FakeRecoveryDialog)
+    try:
+        dlg.on_forgot_password(None)
+        assert calls == [("alice", "Localhost", "ws://localhost:8000")]
     finally:
         dlg.Destroy()
 
